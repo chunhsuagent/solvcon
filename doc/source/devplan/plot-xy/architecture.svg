@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 430" font-family="sans-serif" font-size="13">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#444"/>
+    </marker>
+  </defs>
+  <style>
+    .box { fill: #f4f7fb; stroke: #35506e; stroke-width: 1.5; }
+    .core { fill: #fdf6ec; stroke: #8a6d3b; stroke-width: 1.5; }
+    .ext { fill: #f2f2f2; stroke: #999; stroke-dasharray: 4 3; }
+    .t { fill: #222; }
+    .h { font-weight: bold; fill: #222; }
+    .n { font-size: 11px; fill: #555; }
+    .a { stroke: #444; stroke-width: 1.3; marker-end: url(#arr); fill: none; }
+  </style>
+
+  <text x="20" y="24" class="h" font-size="15">Native xy-plot for pilot: layered design</text>
+
+  <!-- entry points -->
+  <rect x="30" y="46" width="220" height="46" class="box"/>
+  <text x="42" y="65" class="h">pilot console</text>
+  <text x="42" y="82" class="t">plot(x, y, fmt)</text>
+
+  <rect x="290" y="46" width="220" height="46" class="box"/>
+  <text x="302" y="65" class="h">menu bar</text>
+  <text x="302" y="82" class="t">Plot / XY plot</text>
+
+  <!-- feature -->
+  <rect x="30" y="128" width="480" height="56" class="box"/>
+  <text x="42" y="148" class="h">PlotFeature (PilotFeature) -- solvcon/pilot/_plot.py</text>
+  <text x="42" y="166" class="t">menu action; RManager.addSubWindow + windowTitle; series color cycle</text>
+
+  <!-- widget -->
+  <rect x="30" y="214" width="480" height="72" class="box"/>
+  <text x="42" y="234" class="h">PlotWidget (QWidget) -- solvcon/pilot/_plot.py</text>
+  <text x="42" y="252" class="t">paintEvent: frame, grid, ticks + labels, series polylines (QPainter)</text>
+  <text x="42" y="270" class="t">mouse: wheel zoom, drag pan, double-click autoscale (edits view limits)</text>
+
+  <!-- core -->
+  <rect x="30" y="316" width="480" height="88" class="core"/>
+  <text x="42" y="336" class="h">plot core (pure Python, no Qt) -- solvcon/pilot/_plot_core.py</text>
+  <text x="42" y="354" class="t">PlotSeries: x/y arrays + style + dirty flag</text>
+  <text x="42" y="372" class="t">limits: NaN-safe data bbox; view bbox = data + margins (autoscale)</text>
+  <text x="42" y="390" class="t">affine: data -&gt; view box -&gt; pixel rect; ticks: nice-number locator</text>
+
+  <!-- arrows -->
+  <line x1="140" y1="92" x2="140" y2="128" class="a"/>
+  <line x1="400" y1="92" x2="400" y2="128" class="a"/>
+  <line x1="270" y1="184" x2="270" y2="214" class="a"/>
+  <line x1="270" y1="286" x2="270" y2="316" class="a"/>
+
+  <!-- matplotlib mapping -->
+  <rect x="560" y="128" width="196" height="276" class="ext"/>
+  <text x="572" y="148" class="h">matplotlib equivalent</text>
+  <text x="572" y="174" class="n">pyplot state machine</text>
+  <text x="572" y="190" class="n">-&gt; not adopted (explicit window)</text>
+  <text x="572" y="216" class="n">artist zorder tree</text>
+  <text x="572" y="232" class="n">-&gt; flat series list</text>
+  <text x="572" y="258" class="n">transform DAG + invalidation</text>
+  <text x="572" y="274" class="n">-&gt; one affine per paint</text>
+  <text x="572" y="300" class="n">RendererBase + Agg C++</text>
+  <text x="572" y="316" class="n">-&gt; QPainter direct</text>
+  <text x="572" y="342" class="n">MaxNLocator staircase</text>
+  <text x="572" y="358" class="n">-&gt; adopted (simplified)</text>
+  <text x="572" y="384" class="n">lazy dirty-flag recompute</text>
+  <text x="572" y="400" class="n">-&gt; adopted</text>
+</svg>
