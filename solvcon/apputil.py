@@ -289,6 +289,12 @@ def build_pilot_namespace(mgr):
         """List the meshes currently loaded in the 3D viewers."""
         return [w.mesh for w in mgr.list3DWidgets() if w.mesh is not None]
 
+    def plot(x, y=None, **kw):
+        """Plot y or (x, y) in the xy-plot window; creates one lazily."""
+        # Imported here so building the namespace stays Qt-free.
+        from .pilot import _plot
+        return _plot.console_plot(mgr, x, y, **kw)
+
     viewer = mgr.currentR3DWidget()
     handles = {
         'mgr': mgr,
@@ -297,6 +303,7 @@ def build_pilot_namespace(mgr):
         'show_mesh': show_mesh,
         'viewers': viewers,
         'meshes': meshes,
+        'plot': plot,
         'run_worker': run_worker,
     }
     entries = [
@@ -306,6 +313,7 @@ def build_pilot_namespace(mgr):
         ('show_mesh(m)', 'open a mesh in a fresh 3D viewer'),
         ('viewers()', 'list the open 3D viewers'),
         ('meshes()', 'list the loaded meshes'),
+        ('plot(x, y)', 'plot arrays in the xy-plot window'),
         ('run_worker(f)', 'run f on a worker thread; returns a Future'),
         ('sc', 'the solvcon package'),
     ]

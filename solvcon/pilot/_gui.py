@@ -26,6 +26,7 @@ if _pcore.enable:
     from . import _linear_wave
     from . import _canvas_gui
     from . import _painter_gui
+    from . import _plot
     from . import _profiling
     from . import _agent_gui
 
@@ -71,6 +72,7 @@ class _Controller(metaclass=_Singleton):
         self.canvas = None
         self.save_2d_canvas = None
         self.openprofiledata = None
+        self.xyplot = None
         self.runprofiling = None
         self.agent = None
 
@@ -118,6 +120,7 @@ class _Controller(metaclass=_Singleton):
         self.painter = _painter_gui.Painter(mgr=self._rmgr)
         self.canvas = _canvas_gui.Canvas(mgr=self._rmgr, painter=self.painter)
         self.save_2d_canvas = _canvas_gui.Save2DCanvasDialog(mgr=self._rmgr)
+        self.xyplot = _plot.PlotFeature(mgr=self._rmgr)
         self.openprofiledata = _profiling.Profiling(mgr=self._rmgr)
         self.runprofiling = _profiling.RunProfiling(mgr=self._rmgr)
         self.agent = _agent_gui.AgentPanel(mgr=self._rmgr)
@@ -157,6 +160,7 @@ class _Controller(metaclass=_Singleton):
         self.burgers.populate_menu()
         self.linear_wave.populate_menu()
         self.canvas.populate_menu()
+        self.xyplot.populate_menu()
         self.openprofiledata.populate_menu()
         self.runprofiling.populate_menu()
         self.agent.populate_menu()

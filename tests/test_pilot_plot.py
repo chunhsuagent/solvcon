@@ -11,8 +11,11 @@ import solvcon
 
 try:
     from solvcon import pilot
+    from solvcon import apputil
+    from solvcon.pilot import _gui, _plot
     from solvcon.pilot._plot import PlotWidget, finite_runs
     from solvcon.pilot._plot_core import AffineMap
+    from PySide6 import QtWidgets
 except ImportError:
     pilot = None
 
@@ -140,6 +143,74 @@ class PlotWidgetTC(unittest.TestCase):
         self.assertTrue(series.dirty)
         self.widget.grab()  # forces a paint pass
         self.assertFalse(series.dirty)
+
+
+@unittest.skipIf(GITHUB_ACTIONS or not solvcon.HAS_PILOT,
+                 "GUI is not available in GitHub Actions")
+class PlotFeatureTC(unittest.TestCase):
+    def setUp(self):
+        self.mgr = pilot.RManager.instance.setUp()
+        # Visibility tells live plot windows from closed ones, so the
+        # manager must be shown and earlier tests' windows dropped.
+        self.mgr.show()
+        self.mgr.mdiArea.closeAllSubWindows()
+        QtWidgets.QApplication.processEvents()
+
+    def tearDown(self):
+        self.mgr.mdiArea.closeAllSubWindows()
+        QtWidgets.QApplication.processEvents()
+
+    def _plot_subwins(self):
+        return [s for s in self.mgr.mdiArea.subWindowList()
+                if s.isVisible()
+                and isinstance(s.widget(), _plot.PlotWidget)]
+
+    def test_menu_action_opens_titled_window(self):
+        feature = _plot.PlotFeature(mgr=self.mgr)
+        feature.populate_menu()
+        panel = self.mgr.menu_model.menu("Plot")
+        self.assertIn(feature._action, panel.actions())
+        feature._action.trigger()
+        subs = self._plot_subwins()
+        self.assertEqual(len(subs), 1)
+        # The title makes the window listable from the Window menu.
+        self.assertEqual(subs[0].windowTitle(), "XY plot")
+
+    def test_console_plot_creates_a_window(self):
+        handles, _ = apputil.build_pilot_namespace(self.mgr)
+        series = handles['plot']([1.0, 2.0, 3.0])
+        self.assertEqual(len(self._plot_subwins()), 1)
+        self.assertEqual(series.color, "#1f77b4")  # C0
+        self.assertEqual(list(series.x), [0.0, 1.0, 2.0])  # synthesized
+
+    def test_console_plot_reuses_the_window(self):
+        handles, _ = apputil.build_pilot_namespace(self.mgr)
+        first = handles['plot']([1.0, 2.0, 3.0])
+        second = handles['plot']([0.0, 1.0], [5.0, 6.0])
+        subs = self._plot_subwins()
+        self.assertEqual(len(subs), 1)
+        model = subs[0].widget().model
+        self.assertEqual(model.series, [first, second])
+        # The palette cycles per window.
+        self.assertEqual(second.color, "#ff7f0e")  # C1
+
+    def test_console_plot_after_close_opens_anew(self):
+        handles, _ = apputil.build_pilot_namespace(self.mgr)
+        handles['plot']([1.0, 2.0, 3.0])
+        self._plot_subwins()[0].close()
+        QtWidgets.QApplication.processEvents()
+        handles['plot']([4.0, 5.0])
+        subs = self._plot_subwins()
+        self.assertEqual(len(subs), 1)
+        self.assertEqual(len(subs[0].widget().model.series), 1)
+
+    def test_banner_lists_plot(self):
+        _, entries = apputil.build_pilot_namespace(self.mgr)
+        self.assertIn('plot(x, y)', [name for name, _ in entries])
+
+    def test_controller_wires_the_feature(self):
+        mgr = _gui.controller.build()
+        self.assertIsNotNone(mgr.menu_model.action("plot.xy"))
 
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

@@ -15,10 +15,12 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
+from . import _gui_common
 from ._plot_core import AffineMap, AxisTicker, PlotModel, PlotSeries
 
 __all__ = [  # noqa: F822
     'PlotWidget',
+    'PlotFeature',
 ]
 
 
@@ -196,5 +198,83 @@ class PlotWidget(QWidget):
                 painter.drawPolyline(QPolygonF(points))
             series.dirty = False
         painter.restore()
+
+
+def open_plot_window(mgr):
+    """Open a new xy-plot sub-window on ``mgr`` and return its widget.
+
+    The sub-window carries a title so the Window menu can list it.
+
+    :param mgr: The pilot manager (RManager).
+    :return: The hosted plot widget.
+    :rtype: PlotWidget
+    """
+    widget = PlotWidget()
+    # Two steps like the 1D apps: addSubWindow crosses the pybind11
+    # boundary, which loses the ownership transfer and lets Python
+    # garbage-collect the widget; setWidget through PySide records it.
+    subwin = mgr.addSubWindow(QWidget())
+    subwin.setWidget(widget)
+    subwin.setWindowTitle("XY plot")
+    subwin.show()
+    return widget
+
+
+def find_plot_widget(mgr):
+    """The plot widget the console should target, or None.
+
+    Prefer the active sub-window when it hosts a plot; otherwise fall
+    back to the most recently added visible plot window. Closed viewers
+    linger hidden in the MDI list, so visibility tells them apart.
+
+    :param mgr: The pilot manager (RManager).
+    :rtype: PlotWidget or None
+    """
+    mdi = mgr.mdiArea
+    active = mdi.activeSubWindow()
+    if active is not None and isinstance(active.widget(), PlotWidget):
+        return active.widget()
+    for subwin in reversed(mdi.subWindowList()):
+        if subwin.isVisible() and isinstance(subwin.widget(), PlotWidget):
+            return subwin.widget()
+    return None
+
+
+def console_plot(mgr, x, y=None, **kw):
+    """Plot arrays in the current plot window, creating one if needed.
+
+    Mirrors the matplotlib call shapes: ``plot(y)`` synthesizes the
+    abscissa, ``plot(x, y)`` uses both.
+
+    :param mgr: The pilot manager (RManager).
+    :param x: Abscissa values, or the ordinate when ``y`` is None.
+    :param y: Ordinate values.
+    :param kw: Forwarded to :class:`PlotSeries` (label, color,
+        linewidth).
+    :return: The new series.
+    :rtype: PlotSeries
+    """
+    if y is None:
+        x, y = None, x
+    widget = find_plot_widget(mgr)
+    if widget is None:
+        widget = open_plot_window(mgr)
+    return widget.add_series(x, y, **kw)
+
+
+class PlotFeature(_gui_common.PilotFeature):
+    """Menu entry that opens xy-plot sub-windows.
+
+    Each activation opens a fresh plot window; the console ``plot``
+    function reuses the current one instead.
+    """
+
+    def populate_menu(self):
+        self._action = self.add_action(
+            "Plot", "XY plot", "Open an xy plot window",
+            self._on_open, id="plot.xy", weight=10)
+
+    def _on_open(self):
+        open_plot_window(self._mgr)
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:
