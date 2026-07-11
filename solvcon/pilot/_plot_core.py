@@ -233,6 +233,16 @@ class AffineMap:
         self._ay = -height / (y1 - y0)
         self._by = top + height - y0 * self._ay
 
+    @property
+    def x_scale(self):
+        """Pixels per (pre-transformed) data unit along x."""
+        return self._ax
+
+    @property
+    def y_scale(self):
+        """Pixels per data unit along y; negative from the flip."""
+        return self._ay
+
     def map(self, x, y):
         """Map data coordinates to pixel coordinates.
 

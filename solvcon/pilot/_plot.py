@@ -66,10 +66,15 @@ class PlotWidget(QWidget):
     GRID_COLOR = QColor("#d9d9d9")
     TEXT_COLOR = QColor("#222222")
 
+    #: Zoom factor per wheel notch; forward shrinks the view around the
+    #: cursor by this much.
+    ZOOM = 0.8
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.model = PlotModel()
         self.ticker = AxisTicker()
+        self._drag = None
         self.setMinimumSize(120, 90)
         # The plot area is opaque white like a figure, not widget gray.
         self.setAutoFillBackground(False)
@@ -97,6 +102,88 @@ class PlotWidget(QWidget):
         """
         return (self.ticker.ticks(*self.model.xlim),
                 self.ticker.ticks(*self.model.ylim))
+
+    def data_map(self):
+        """The data-to-pixel map for the current view and size.
+
+        :rtype: AffineMap
+        """
+        rect = self.axes_rect()
+        return AffineMap(
+            self.model.xlim, self.model.ylim,
+            (rect.left(), rect.top(), rect.width(), rect.height()))
+
+    def wheelEvent(self, event):
+        """Zoom about the cursor; the data under it stays put."""
+        notches = event.angleDelta().y() / 120.0
+        if notches == 0.0:
+            return
+        factor = self.ZOOM ** notches
+        pos = event.position()
+        ax, ay = self.data_map().unmap(pos.x(), pos.y())
+        ax, ay = float(ax), float(ay)
+        x0, x1 = self.model.xlim
+        y0, y1 = self.model.ylim
+        self.model.xlim = (ax + (x0 - ax) * factor,
+                           ax + (x1 - ax) * factor)
+        self.model.ylim = (ay + (y0 - ay) * factor,
+                           ay + (y1 - ay) * factor)
+        self._pin(pos, ax, ay)
+        self.update()
+
+    def _pin(self, pos, ax, ay):
+        """Put the data point ``(ax, ay)`` back under ``pos``.
+
+        The label gutter follows the view, so a zoom can re-lay the
+        axes rectangle out and shift what sits under the cursor; one
+        linear correction in the new layout pins the anchor again.
+        """
+        px, py = self.data_map().unmap(pos.x(), pos.y())
+        dx = float(px) - ax
+        dy = float(py) - ay
+        x0, x1 = self.model.xlim
+        y0, y1 = self.model.ylim
+        self.model.xlim = (x0 - dx, x1 - dx)
+        self.model.ylim = (y0 - dy, y1 - dy)
+
+    def mousePressEvent(self, event):
+        """Start a pan drag; the view limits follow the pointer."""
+        if event.button() == Qt.LeftButton:
+            self._drag = (event.position(),
+                          self.model.xlim, self.model.ylim,
+                          self.data_map())
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Pan by the dragged distance, in data units."""
+        if self._drag is None:
+            super().mouseMoveEvent(event)
+            return
+        start, (x0, x1), (y0, y1), amap = self._drag
+        delta = event.position() - start
+        # The map is linear, so a pixel delta converts through the
+        # scale alone; the y sign rides in the (negative) y scale.
+        dx = delta.x() / amap.x_scale
+        dy = delta.y() / amap.y_scale
+        self.model.xlim = (x0 - dx, x1 - dx)
+        self.model.ylim = (y0 - dy, y1 - dy)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        """End the pan drag."""
+        if event.button() == Qt.LeftButton:
+            self._drag = None
+        else:
+            super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Restore the autoscaled view."""
+        if event.button() == Qt.LeftButton:
+            self.model.autoscale()
+            self.update()
+        else:
+            super().mouseDoubleClickEvent(event)
 
     def axes_rect(self):
         """The axes rectangle for the current size, as a QRectF.

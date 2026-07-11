@@ -15,7 +15,8 @@ try:
     from solvcon.pilot import _gui, _plot
     from solvcon.pilot._plot import PlotWidget, finite_runs
     from solvcon.pilot._plot_core import AffineMap
-    from PySide6 import QtWidgets
+    from PySide6 import QtCore, QtGui, QtWidgets
+    from PySide6.QtCore import QPoint, QPointF, Qt
 except ImportError:
     pilot = None
 
@@ -143,6 +144,93 @@ class PlotWidgetTC(unittest.TestCase):
         self.assertTrue(series.dirty)
         self.widget.grab()  # forces a paint pass
         self.assertFalse(series.dirty)
+
+
+@unittest.skipIf(GITHUB_ACTIONS or not solvcon.HAS_PILOT,
+                 "GUI is not available in GitHub Actions")
+class PlotInteractionTC(unittest.TestCase):
+    def setUp(self):
+        self.mgr = pilot.RManager.instance.setUp()
+        self.widget = PlotWidget()
+        self.widget.resize(400, 300)
+        self.widget.add_series([0.0, 10.0], [0.0, 10.0])
+        self.center = self.widget.axes_rect().center()
+
+    def _wheel(self, notches, pos=None):
+        pos = self.center if pos is None else pos
+        event = QtGui.QWheelEvent(
+            pos, self.widget.mapToGlobal(pos.toPoint()),
+            QPoint(0, 0), QPoint(0, int(notches * 120)),
+            Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False)
+        QtWidgets.QApplication.sendEvent(self.widget, event)
+
+    def _mouse(self, kind, pos, button=Qt.LeftButton):
+        state = button if kind != QtCore.QEvent.MouseButtonRelease \
+            else Qt.NoButton
+        event = QtGui.QMouseEvent(
+            kind, pos, self.widget.mapToGlobal(pos.toPoint()),
+            button, state, Qt.NoModifier)
+        QtWidgets.QApplication.sendEvent(self.widget, event)
+
+    def test_wheel_zooms_in_and_keeps_the_anchor(self):
+        amap = self.widget.data_map()
+        anchor = amap.unmap(self.center.x(), self.center.y())
+        span = self.widget.model.xlim[1] - self.widget.model.xlim[0]
+        self._wheel(1.0)
+        model = self.widget.model
+        self.assertAlmostEqual(model.xlim[1] - model.xlim[0],
+                               span * PlotWidget.ZOOM)
+        # The data point under the cursor must not move.
+        after = self.widget.data_map().unmap(self.center.x(),
+                                             self.center.y())
+        self.assertAlmostEqual(float(after[0]), float(anchor[0]))
+        self.assertAlmostEqual(float(after[1]), float(anchor[1]))
+
+    def test_wheel_out_expands_the_view(self):
+        span = self.widget.model.xlim[1] - self.widget.model.xlim[0]
+        self._wheel(-1.0)
+        model = self.widget.model
+        self.assertAlmostEqual(model.xlim[1] - model.xlim[0],
+                               span / PlotWidget.ZOOM)
+
+    def test_drag_pans_by_the_dragged_distance(self):
+        amap = self.widget.data_map()
+        x0 = self.widget.model.xlim
+        y0 = self.widget.model.ylim
+        start = self.center
+        end = QPointF(start.x() + 50.0, start.y() + 30.0)
+        self._mouse(QtCore.QEvent.MouseButtonPress, start)
+        self._mouse(QtCore.QEvent.MouseMove, end)
+        self._mouse(QtCore.QEvent.MouseButtonRelease, end)
+        dx = 50.0 / amap.x_scale
+        dy = 30.0 / amap.y_scale
+        model = self.widget.model
+        self.assertAlmostEqual(model.xlim[0], x0[0] - dx)
+        self.assertAlmostEqual(model.xlim[1], x0[1] - dx)
+        self.assertAlmostEqual(model.ylim[0], y0[0] - dy)
+        self.assertAlmostEqual(model.ylim[1], y0[1] - dy)
+
+    def test_release_ends_the_pan(self):
+        start = self.center
+        self._mouse(QtCore.QEvent.MouseButtonPress, start)
+        self._mouse(QtCore.QEvent.MouseButtonRelease, start)
+        moved = self.widget.model.xlim
+        self._mouse(QtCore.QEvent.MouseMove,
+                    QPointF(start.x() + 80.0, start.y()))
+        self.assertEqual(self.widget.model.xlim, moved)
+
+    def test_double_click_restores_autoscale(self):
+        self._wheel(2.0)
+        self._mouse(QtCore.QEvent.MouseButtonPress, self.center)
+        self._mouse(QtCore.QEvent.MouseMove,
+                    QPointF(self.center.x() + 40.0, self.center.y()))
+        self._mouse(QtCore.QEvent.MouseButtonRelease, self.center)
+        self._mouse(QtCore.QEvent.MouseButtonDblClick, self.center)
+        model = self.widget.model
+        self.assertAlmostEqual(model.xlim[0], -0.5)
+        self.assertAlmostEqual(model.xlim[1], 10.5)
+        self.assertAlmostEqual(model.ylim[0], -0.5)
+        self.assertAlmostEqual(model.ylim[1], 10.5)
 
 
 @unittest.skipIf(GITHUB_ACTIONS or not solvcon.HAS_PILOT,
