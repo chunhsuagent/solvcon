@@ -17,7 +17,7 @@ import solvcon
 
 try:
     from solvcon import pilot
-    from solvcon.pilot import _gui
+    from solvcon.pilot import _euler1d, _gui
     from solvcon.pilot._window_manager import WindowManager
     from PySide6 import QtWidgets
 except ImportError:
@@ -118,6 +118,15 @@ class WindowMenuTC(unittest.TestCase):
         self.area.subWindowList()[-1].close()
         self._show()
         self.assertEqual(len(self._items()), 1)
+
+    def test_solver_window_carries_its_title(self):
+        # A 1D solver window used to carry no title at all, so the list
+        # could only show it as a bare numbered "window" entry.
+        app = _euler1d.Euler1DApp(mgr=self.mgr)
+        app.run()
+        self._show()
+        items = self._items()
+        self.assertTrue(items[-1].text().endswith("Euler solver"))
 
 
 if __name__ == '__main__':
