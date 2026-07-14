@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 350" font-family="sans-serif" font-size="12">
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#444"/>
+    </marker>
+  </defs>
+  <style>
+    .py { fill: #eef4fb; stroke: #35506e; stroke-width: 1.4; }
+    .cpp { fill: #fdf6ec; stroke: #8a6d3b; stroke-width: 1.4; }
+    .reuse { fill: #eef7ef; stroke: #3a7d4a; stroke-width: 1.4; }
+    .w { fill: #f3eefb; stroke: #5b3f8a; stroke-width: 1.4; }
+    .scr { fill: #eef2f6; stroke: #55606e; stroke-width: 1.4; }
+    .fut { fill: #f4f4f4; stroke: #999; stroke-width: 1.3; stroke-dasharray: 5 4; }
+    .h { font-weight: bold; fill: #222; }
+    .t { fill: #333; }
+    .n { font-size: 11px; fill: #666; }
+    .g { font-size: 10px; fill: #3a7d4a; font-weight: bold; }
+    .ar { stroke: #444; stroke-width: 1.3; marker-end: url(#a); fill: none; }
+    .arf { stroke: #999; stroke-width: 1.2; stroke-dasharray: 5 4; marker-end: url(#a); fill: none; }
+  </style>
+
+  <text x="16" y="22" class="h" font-size="14">RPlotWidget: data in C++, drawn on the CPU, reusing the 2D stack</text>
+
+  <rect x="16" y="42" width="196" height="58" class="py"/>
+  <text x="28" y="62" class="h">Python (thin)</text>
+  <text x="28" y="80" class="t">console plot(x, y)</text>
+  <text x="28" y="95" class="n">NumPy -> SimpleArray (zero-copy)</text>
+
+  <rect x="16" y="132" width="212" height="104" class="cpp"/>
+  <text x="28" y="152" class="h">C++ plot core (new)</text>
+  <text x="28" y="170" class="t">RPlotSeries: SimpleArray x,y</text>
+  <text x="28" y="186" class="t">RPlotModel: limits, autoscale</text>
+  <text x="28" y="202" class="t">RPlotTicker: nice-number ticks</text>
+  <text x="28" y="218" class="t">RPlotDecimator: min/max/col</text>
+
+  <rect x="300" y="120" width="206" height="58" class="reuse"/>
+  <text x="312" y="140" class="h">ViewTransform2dFp64</text>
+  <text x="312" y="157" class="n">world &lt;-&gt; screen, pan/zoom</text>
+  <text x="312" y="171" class="g">REUSED (already bound)</text>
+
+  <rect x="300" y="196" width="206" height="72" class="w"/>
+  <text x="312" y="216" class="h">RPlotWidget : QWidget</text>
+  <text x="312" y="233" class="t">paintEvent: map + decimate</text>
+  <text x="312" y="249" class="t">QPainter lines / grid / text</text>
+  <text x="312" y="263" class="n">chrome via RWorldRenderer2d</text>
+
+  <rect x="566" y="196" width="180" height="72" class="scr"/>
+  <text x="578" y="216" class="h">Widget / QImage</text>
+  <text x="578" y="234" class="n">on-screen widget or</text>
+  <text x="578" y="248" class="n">offscreen renderImage();</text>
+  <text x="578" y="262" class="n">no GPU, no display needed</text>
+
+  <rect x="300" y="292" width="446" height="44" class="fut"/>
+  <text x="312" y="312" class="h">Later: GPU (QRhi) backend</text>
+  <text x="312" y="329" class="n">reuses core + same ViewTransform2d; swaps only the paint path</text>
+
+  <line x1="114" y1="100" x2="114" y2="132" class="ar"/>
+  <line x1="228" y1="150" x2="300" y2="150" class="ar"/>
+  <text x="234" y="143" class="n">limits</text>
+  <line x1="228" y1="214" x2="300" y2="228" class="ar"/>
+  <text x="232" y="228" class="n">series + ticks</text>
+  <line x1="403" y1="178" x2="403" y2="196" class="ar"/>
+  <line x1="506" y1="232" x2="566" y2="232" class="ar"/>
+  <text x="516" y="225" class="n">QPainter</text>
+  <line x1="120" y1="236" x2="120" y2="314" class="arf"/>
+  <line x1="120" y1="314" x2="300" y2="314" class="arf"/>
+  <text x="150" y="308" class="n">same core</text>
+</svg>
