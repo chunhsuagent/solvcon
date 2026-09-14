@@ -54,6 +54,9 @@ inline constexpr double PLOT_DEFAULT_LINE_WIDTH = 1.5;
  */
 inline constexpr double PLOT_DEFAULT_MARGIN = 0.05;
 
+/// Default number of intervals an axis is ticked for.
+inline constexpr std::size_t PLOT_DEFAULT_TICK_COUNT = 5;
+
 /**
  * The matplotlib C0-C9 categorical cycle, in order. Exactly ten entries over
  * storage of static lifetime, so the span outlives any caller.
