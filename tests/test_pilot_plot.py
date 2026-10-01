@@ -231,6 +231,8 @@ class PilotPlotTickerTC(unittest.TestCase):
         ticker = pilot.RPlotTicker(5)
         self.assertEqual([0.0, 2.0, 4.0, 6.0, 8.0, 10.0],
                          ticker.locate(0.0, 10.0))
+        # Every tick has to land inside the span it was asked for, or the
+        # axis is labelled outside its own frame.
         for lo, hi in ((0.3, 0.7), (-5.0, 5.0), (1e4, 1.2e4)):
             for tick in ticker.locate(lo, hi):
                 self.assertGreaterEqual(tick, lo)
@@ -238,12 +240,16 @@ class PilotPlotTickerTC(unittest.TestCase):
 
     def test_invalid_linear_ranges_have_no_ticks(self):
         ticker = pilot.RPlotTicker(5)
+        # A flat curve leaves a zero span; ticking it would divide by it.
         self.assertEqual([], ticker.locate(1.0, 1.0))
         self.assertEqual([], ticker.locate(1.0, float('nan')))
         self.assertEqual([], ticker.locate(1.0, float('inf')))
 
     def test_ticks_are_counted_and_not_accumulated(self):
         ticker = pilot.RPlotTicker(5)
+        # Where the span is small beside the offset, adding the step rounds
+        # back to where it started and a walk along the axis never ends.
+        # This runs inside paintEvent, so it takes the GUI thread with it.
         ticks = ticker.locate(1e16, 1e16 + 4.0)
         self.assertGreater(len(ticks), 0)
         self.assertLessEqual(len(ticks), 12)
@@ -252,9 +258,22 @@ class PilotPlotTickerTC(unittest.TestCase):
         ticker = pilot.RPlotTicker(5)
         self.assertEqual([-4.0, -3.0, -2.0],
                          ticker.locate_decades(-4.2, -1.8))
+        # A range inside one decade still gets its ends marked, so the axis
+        # is never left blank.
         self.assertEqual([-2.4, -2.1],
                          ticker.locate_decades(-2.4, -2.1))
         self.assertEqual([], ticker.locate_decades(float('nan'), 1.0))
+
+    def test_a_log_tick_off_a_whole_decade_reads_its_own_value(self):
+        ticker = pilot.RPlotTicker(5)
+        # A range inside one decade is ticked at its own ends, which are
+        # not powers of ten.  Labelling those as powers of ten puts the
+        # axis off by a factor the reader has no way to see.
+        self.assertEqual(['1e-4', '1e-3'],
+                         [ticker.decade_label(it) for it in (-4.0, -3.0)])
+        self.assertEqual(['1.91', '5.235'],
+                         [ticker.decade_label(it)
+                          for it in ticker.locate_decades(0.2811, 0.7189)])
 
     def test_labels_are_short_and_unambiguous(self):
         ticker = pilot.RPlotTicker(5)
@@ -263,8 +282,6 @@ class PilotPlotTickerTC(unittest.TestCase):
         self.assertEqual('1234', ticker.label(1234.5))
         self.assertEqual('1e+05', ticker.label(123456.0))
         self.assertEqual('1e-04', ticker.label(1e-4))
-        self.assertEqual('1e-4', ticker.decade_label(-4.0))
-        self.assertEqual('1.91', ticker.decade_label(0.2811))
 
     def test_target_count_is_validated(self):
         # No count is compiled in: plot defaults are to come from a
