@@ -269,19 +269,50 @@ class PilotPlotTickerTC(unittest.TestCase):
         # A range inside one decade is ticked at its own ends, which are
         # not powers of ten.  Labelling those as powers of ten puts the
         # axis off by a factor the reader has no way to see.
-        self.assertEqual(['1e-4', '1e-3'],
-                         [ticker.decade_label(it) for it in (-4.0, -3.0)])
+        self.assertEqual(['1e-4', '1e-3'], ticker.decade_labels([-4.0, -3.0]))
         self.assertEqual(['1.91', '5.235'],
-                         [ticker.decade_label(it)
-                          for it in ticker.locate_decades(0.2811, 0.7189)])
+                         ticker.decade_labels(
+                             ticker.locate_decades(0.2811, 0.7189)))
 
     def test_labels_are_short_and_unambiguous(self):
         ticker = pilot.RPlotTicker(5)
-        self.assertEqual('0', ticker.label(0.0))
-        self.assertEqual('0.5', ticker.label(0.5))
-        self.assertEqual('1234', ticker.label(1234.5))
-        self.assertEqual('1e+05', ticker.label(123456.0))
-        self.assertEqual('1e-04', ticker.label(1e-4))
+        self.assertEqual(['0', '2', '4', '6', '8', '10'],
+                         ticker.labels(ticker.locate(0.0, 10.0)))
+        self.assertEqual(['0.3', '0.4', '0.5', '0.6', '0.7'],
+                         ticker.labels(ticker.locate(0.3, 0.7)))
+        self.assertEqual(['10000', '10500', '11000', '11500', '12000'],
+                         ticker.labels(ticker.locate(1e4, 1.2e4)))
+        # A lone tick has no neighbour to tell apart, so it stays short.
+        self.assertEqual(['1234'], ticker.labels([1234.5]))
+        self.assertEqual(['1e+05'], ticker.labels([123456.0]))
+        self.assertEqual(['1e-04'], ticker.labels([1e-4]))
+        self.assertEqual([], ticker.labels([]))
+
+    def test_neighbouring_labels_never_read_alike(self):
+        # Rounded on its own, a label can read the same as its neighbour,
+        # and an axis that repeats a number tells the reader nothing.
+        ticker = pilot.RPlotTicker(4)
+        self.assertEqual(['1.0e+05', '1.5e+05', '2.0e+05'],
+                         ticker.labels(ticker.locate(1e5, 2e5)))
+        self.assertEqual(['1.0134e+05', '1.0136e+05', '1.0138e+05',
+                          '1.0140e+05'],
+                         ticker.labels(ticker.locate(101325.0, 101400.0)))
+        ticker = pilot.RPlotTicker(5)
+        self.assertEqual(['1234.0', '1234.1', '1234.2', '1234.3', '1234.4',
+                          '1234.5'],
+                         ticker.labels(ticker.locate(1234.0, 1234.5)))
+        self.assertEqual(['1.9103', '1.9104'],
+                         ticker.decade_labels([0.2811, 0.28112]))
+
+    def test_an_axis_keeps_one_notation(self):
+        # Plain and exponent forms side by side make neighbouring labels
+        # hard to compare, so the largest tick picks the form for all.
+        ticker = pilot.RPlotTicker(5)
+        self.assertEqual(['0', '5.0e+04', '1.0e+05', '1.5e+05'],
+                         ticker.labels(ticker.locate(0.0, 1.5e5)))
+        self.assertEqual(['1.0e-04', '1.2e-04', '1.4e-04', '1.6e-04',
+                          '1.8e-04', '2.0e-04'],
+                         ticker.labels(ticker.locate(1e-4, 2e-4)))
 
     def test_target_count_is_validated(self):
         # No count is compiled in: plot defaults are to come from a

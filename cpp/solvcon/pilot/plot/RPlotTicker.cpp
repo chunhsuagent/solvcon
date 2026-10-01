@@ -20,6 +20,8 @@ namespace
 constexpr double TICK_BOUND_SLACK = 1e-9;
 constexpr double PLAIN_LABEL_MINIMUM = 1e-3;
 constexpr double PLAIN_LABEL_MAXIMUM = 1e5;
+constexpr int DECADE_END_DIGITS = 4;
+constexpr int LABEL_MAXIMUM_DIGITS = 17;
 
 } /* end namespace */
 
@@ -136,28 +138,132 @@ RPlotTicker::ticks_type RPlotTicker::locate_decades(double lo, double hi) const
     return ticks;
 }
 
-std::string RPlotTicker::label(double value) const
+/// The smallest gap between neighbouring ticks, or zero when no two ticks differ.
+static double smallest_gap(RPlotTicker::ticks_type const & ticks)
 {
-    if (value == 0.0)
+    double gap = 0.0;
+    for (std::size_t it = 1; it < ticks.size(); ++it)
+    {
+        double const step = ticks[it] - ticks[it - 1];
+        if (step > 0.0 && (gap == 0.0 || step < gap))
+        {
+            gap = step;
+        }
+    }
+    return gap;
+}
+
+/// Whether two neighbouring ticks of different values read alike.
+static bool labels_collide(RPlotTicker::ticks_type const & ticks, RPlotTicker::labels_type const & texts)
+{
+    for (std::size_t it = 1; it < texts.size(); ++it)
+    {
+        if (texts[it] == texts[it - 1] && ticks[it] != ticks[it - 1])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::string format_plain(double value, int digits)
+{
+    std::string text = std::format("{:.{}f}", value, digits);
+    // A residue just below zero would otherwise read "-0.0".
+    if (text.find_first_not_of("-0.") == std::string::npos)
     {
         return "0";
     }
-
-    double const magnitude = std::abs(value);
-    if (PLAIN_LABEL_MINIMUM <= magnitude && magnitude < PLAIN_LABEL_MAXIMUM)
-    {
-        return std::format("{:.4g}", value);
-    }
-    return std::format("{:.0e}", value);
+    return text;
 }
 
-std::string RPlotTicker::decade_label(double value) const
+RPlotTicker::labels_type RPlotTicker::labels(ticks_type const & ticks) const
 {
-    if (std::isfinite(value) && std::floor(value) == value)
+    double largest = 0.0;
+    for (double const value : ticks)
     {
-        return std::format("1e{:.0f}", value);
+        largest = std::max(largest, std::abs(value));
     }
-    return label(std::pow(10.0, value));
+    // One notation for the whole axis, so a label never switches form beside its neighbour.
+    bool const plain = largest == 0.0 || (PLAIN_LABEL_MINIMUM <= largest && largest < PLAIN_LABEL_MAXIMUM);
+
+    double const gap = smallest_gap(ticks);
+    if (!(gap > 0.0) || !std::isfinite(gap))
+    {
+        // A lone tick has no neighbour to tell apart, so it keeps the short form.
+        labels_type texts;
+        for (double const value : ticks)
+        {
+            if (value == 0.0)
+            {
+                texts.emplace_back("0");
+            }
+            else
+            {
+                texts.push_back(plain ? std::format("{:.4g}", value) : std::format("{:.0e}", value));
+            }
+        }
+        return texts;
+    }
+
+    auto const render = [&ticks, plain](int digits)
+    {
+        labels_type texts;
+        for (double const value : ticks)
+        {
+            if (value == 0.0)
+            {
+                texts.emplace_back("0");
+            }
+            else
+            {
+                texts.push_back(plain ? format_plain(value, digits) : std::format("{:.{}e}", value, digits));
+            }
+        }
+        return texts;
+    };
+
+    // The digits that resolve the spacing, as the 2D canvas grid labels do. The
+    // slack keeps a gap that rounding left just short of its power of ten on it.
+    int const gap_exponent = static_cast<int>(std::floor(std::log10(gap) + TICK_BOUND_SLACK));
+    int const top_exponent = static_cast<int>(std::floor(std::log10(largest)));
+    int digits = std::clamp(plain ? -gap_exponent : top_exponent - gap_exponent, 0, LABEL_MAXIMUM_DIGITS);
+    labels_type texts = render(digits);
+    while (digits < LABEL_MAXIMUM_DIGITS && labels_collide(ticks, texts))
+    {
+        ++digits;
+        texts = render(digits);
+    }
+    return texts;
+}
+
+RPlotTicker::labels_type RPlotTicker::decade_labels(ticks_type const & ticks) const
+{
+    auto const render = [&ticks](int digits)
+    {
+        labels_type texts;
+        for (double const value : ticks)
+        {
+            if (std::isfinite(value) && std::floor(value) == value)
+            {
+                texts.push_back(std::format("1e{:.0f}", value));
+            }
+            else
+            {
+                texts.push_back(std::format("{:.{}g}", std::pow(10.0, value), digits));
+            }
+        }
+        return texts;
+    };
+
+    int digits = DECADE_END_DIGITS;
+    labels_type texts = render(digits);
+    while (digits < LABEL_MAXIMUM_DIGITS && labels_collide(ticks, texts))
+    {
+        ++digits;
+        texts = render(digits);
+    }
+    return texts;
 }
 
 } /* end namespace solvcon */

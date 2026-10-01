@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include <solvcon/buffer/small_vector.hpp>
 
@@ -30,6 +31,7 @@ class RPlotTicker
 public:
 
     using ticks_type = small_vector<double, 16>;
+    using labels_type = std::vector<std::string>;
 
     explicit RPlotTicker(std::size_t target_count);
     RPlotTicker(RPlotTicker const &) = default;
@@ -44,8 +46,10 @@ public:
     ticks_type locate(double lo, double hi) const;
     ticks_type locate_decades(double lo, double hi) const;
 
-    std::string label(double value) const;
-    std::string decade_label(double value) const;
+    /// Label increasing ticks in one notation, with the digits their spacing needs, so neighbours never read alike.
+    labels_type labels(ticks_type const & ticks) const;
+    /// Label log-axis ticks: whole exponents as powers of ten, fractional ends by value, neighbours kept distinct.
+    labels_type decade_labels(ticks_type const & ticks) const;
 
 private:
 

@@ -301,8 +301,16 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotTicker
                 },
                 py::arg("lo"),
                 py::arg("hi"))
-            .def("label", &wrapped_type::label, py::arg("value"))
-            .def("decade_label", &wrapped_type::decade_label, py::arg("value"))
+            .def(
+                "labels",
+                [](wrapped_type const & self, std::vector<double> const & ticks)
+                { return self.labels(RPlotTicker::ticks_type(ticks.begin(), ticks.end())); },
+                py::arg("ticks"))
+            .def(
+                "decade_labels",
+                [](wrapped_type const & self, std::vector<double> const & ticks)
+                { return self.decade_labels(RPlotTicker::ticks_type(ticks.begin(), ticks.end())); },
+                py::arg("ticks"))
             //
             ;
     }

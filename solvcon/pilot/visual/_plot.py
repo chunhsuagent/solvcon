@@ -192,7 +192,8 @@ class LinePlotWidget(QWidget):
         faint = QColor(ink)
         faint.setAlpha(48)
         metrics = self.fontMetrics()
-        for value in self._xticker.locate(limits.xmin, limits.xmax):
+        xticks = self._xticker.locate(limits.xmin, limits.xmax)
+        for value, text in zip(xticks, self._xticker.labels(xticks)):
             at = to_screen(value, limits.ymin).x()
             painter.setPen(QPen(faint))
             painter.drawLine(at, rect.top(), at, rect.bottom())
@@ -200,14 +201,14 @@ class LinePlotWidget(QWidget):
             painter.drawText(
                 QRect(round(at) - 40, rect.bottom() + 2, 80,
                       metrics.height()),
-                Qt.AlignCenter, self._xticker.label(value))
+                Qt.AlignCenter, text)
         if self.log_y:
             ticks = self._yticker.locate_decades(limits.ymin, limits.ymax)
-            label = self._yticker.decade_label
+            texts = self._yticker.decade_labels(ticks)
         else:
             ticks = self._yticker.locate(limits.ymin, limits.ymax)
-            label = self._yticker.label
-        for value in ticks:
+            texts = self._yticker.labels(ticks)
+        for value, text in zip(ticks, texts):
             at = to_screen(limits.xmin, value).y()
             painter.setPen(QPen(faint))
             painter.drawLine(rect.left(), at, rect.right(), at)
@@ -215,7 +216,7 @@ class LinePlotWidget(QWidget):
             painter.drawText(
                 QRect(0, round(at) - metrics.height() // 2,
                       self.MARGINS[0] - 4, metrics.height()),
-                Qt.AlignRight | Qt.AlignVCenter, label(value))
+                Qt.AlignRight | Qt.AlignVCenter, text)
 
     def _draw_series(self, painter, rect, to_screen):
         painter.save()
