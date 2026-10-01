@@ -18,8 +18,6 @@
 
 #include <solvcon/buffer/small_vector.hpp>
 
-#include <solvcon/pilot/plot/plot_style.hpp>
-
 namespace solvcon
 {
 
@@ -33,7 +31,6 @@ public:
 
     using ticks_type = small_vector<double, 16>;
 
-    RPlotTicker() = default;
     explicit RPlotTicker(std::size_t target_count);
     RPlotTicker(RPlotTicker const &) = default;
     RPlotTicker(RPlotTicker &&) = default;
@@ -52,7 +49,7 @@ public:
 
 private:
 
-    std::size_t m_target_count = PLOT_DEFAULT_TICK_COUNT;
+    std::size_t m_target_count = 0;
 }; /* end class RPlotTicker */
 
 } /* end namespace solvcon */

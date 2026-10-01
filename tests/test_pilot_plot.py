@@ -237,19 +237,19 @@ class PilotPlotTickerTC(unittest.TestCase):
                 self.assertLessEqual(tick, hi)
 
     def test_invalid_linear_ranges_have_no_ticks(self):
-        ticker = pilot.RPlotTicker()
+        ticker = pilot.RPlotTicker(5)
         self.assertEqual([], ticker.locate(1.0, 1.0))
         self.assertEqual([], ticker.locate(1.0, float('nan')))
         self.assertEqual([], ticker.locate(1.0, float('inf')))
 
     def test_ticks_are_counted_and_not_accumulated(self):
-        ticker = pilot.RPlotTicker()
+        ticker = pilot.RPlotTicker(5)
         ticks = ticker.locate(1e16, 1e16 + 4.0)
         self.assertGreater(len(ticks), 0)
         self.assertLessEqual(len(ticks), 12)
 
     def test_decade_ticks_mark_the_axis_or_its_ends(self):
-        ticker = pilot.RPlotTicker()
+        ticker = pilot.RPlotTicker(5)
         self.assertEqual([-4.0, -3.0, -2.0],
                          ticker.locate_decades(-4.2, -1.8))
         self.assertEqual([-2.4, -2.1],
@@ -257,7 +257,7 @@ class PilotPlotTickerTC(unittest.TestCase):
         self.assertEqual([], ticker.locate_decades(float('nan'), 1.0))
 
     def test_labels_are_short_and_unambiguous(self):
-        ticker = pilot.RPlotTicker()
+        ticker = pilot.RPlotTicker(5)
         self.assertEqual('0', ticker.label(0.0))
         self.assertEqual('0.5', ticker.label(0.5))
         self.assertEqual('1234', ticker.label(1234.5))
@@ -267,7 +267,10 @@ class PilotPlotTickerTC(unittest.TestCase):
         self.assertEqual('1.91', ticker.decade_label(0.2811))
 
     def test_target_count_is_validated(self):
-        self.assertEqual(5, pilot.RPlotTicker().target_count)
+        # No count is compiled in: plot defaults are to come from a
+        # runtime container, so every caller names its own.
+        with self.assertRaises(TypeError):
+            pilot.RPlotTicker()
         ticker = pilot.RPlotTicker(2)
         self.assertEqual(2, ticker.target_count)
         self.assertEqual([0.0, 5.0, 10.0], ticker.locate(0.0, 10.0))

@@ -269,7 +269,6 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotTicker
         namespace py = pybind11;
 
         (*this)
-            .def(py::init<>())
             .def(
                 py::init(
                     [](std::int64_t target_count)
