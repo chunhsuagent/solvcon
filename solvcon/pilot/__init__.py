@@ -22,6 +22,7 @@ from ._pilot_core import (  # noqa: F401
     PlotLimits2d,
     PlotColor,
     RPlotSeries,
+    RPlotDecimator,
     RPlotModel,
     RPlotTicker,
     plot_color_cycle,
