@@ -274,6 +274,57 @@ class Point3dFp64TC(Point3dTB, unittest.TestCase):
 
 class PointPadTB(testing.TestBase):
 
+    def test_circumcircle(self):
+        pp = self.PointPad(ndim=2)
+        for x, y in ((0.0, 0.0), (2.0, 0.0), (0.0, 2.0), (1.0, 1.0)):
+            pp.append(x, y)
+        self.assert_allclose(pp.circumcircle(0, 1, 2), (2.0, 1.0, 1.0, 0.0))
+        # The orientation does not matter.
+        self.assert_allclose(pp.circumcircle(2, 1, 0), (2.0, 1.0, 1.0, 0.0))
+
+    def test_circumcircle_far_from_origin(self):
+        pp = self.PointPad(ndim=2)
+        for x, y in ((1000.0, 1000.0), (1000.0 + 2, 1000.0),
+                     (1000.0, 1000.0 + 2)):
+            pp.append(x, y)
+        r2, ux, uy, uz = pp.circumcircle(0, 1, 2)
+        self.assert_allclose((r2, ux, uy, uz),
+                             (2.0, 1000.0 + 1, 1000.0 + 1, 0.0))
+
+    def test_circumcircle_3d(self):
+        pp = self.PointPad(ndim=3)
+        for x, y, z in ((0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (0.0, 2.0, 0.0)):
+            pp.append(x, y, z)
+        self.assert_allclose(pp.circumcircle(0, 1, 2), (2.0, 1.0, 1.0, 0.0))
+        # Tilt the triangle plane: the center stays equidistant from the
+        # three points and lies in the plane through them.
+        pp = self.PointPad(ndim=3)
+        for x, y, z in ((1.0, 2.0, 3.0), (4.0, 2.5, 3.5), (2.0, 6.0, 1.0)):
+            pp.append(x, y, z)
+        r2, ux, uy, uz = pp.circumcircle(0, 1, 2)
+        for ip in range(3):
+            d2 = ((pp.x_at(ip) - ux) ** 2 + (pp.y_at(ip) - uy) ** 2
+                  + (pp.z_at(ip) - uz) ** 2)
+            self.assert_allclose(d2, r2)
+        b = [pp.x_at(1) - pp.x_at(0), pp.y_at(1) - pp.y_at(0),
+             pp.z_at(1) - pp.z_at(0)]
+        c = [pp.x_at(2) - pp.x_at(0), pp.y_at(2) - pp.y_at(0),
+             pp.z_at(2) - pp.z_at(0)]
+        n = [b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
+             b[0] * c[1] - b[1] * c[0]]
+        u = [ux - pp.x_at(0), uy - pp.y_at(0), uz - pp.z_at(0)]
+        self.assert_allclose(sum(i * j for i, j in zip(n, u)), 0.0,
+                             atol=1e-4)
+
+    def test_circumcircle_rejects_bad_input(self):
+        pp = self.PointPad(ndim=2)
+        for x, y in ((0.0, 0.0), (1.0, 1.0), (2.0, 2.0)):
+            pp.append(x, y)
+        with self.assertRaisesRegex(ValueError, "collinear or duplicated"):
+            pp.circumcircle(0, 1, 2)
+        with self.assertRaisesRegex(IndexError, "out of range"):
+            pp.circumcircle(0, 1, 3)
+
     def test_ndim(self):
         pp2d = self.PointPad(ndim=2)
         self.assertEqual(pp2d.ndim, 2)
@@ -778,6 +829,62 @@ class PointPadTB(testing.TestBase):
                     with self.assertRaisesRegex(ValueError, error_msg):
                         self.PointPad(
                             ndim=ndim, nelem=nelem, alignment=alignment)
+
+    def test_append_arrays_2d(self):
+        pp = self.PointPad(ndim=2)
+        pp.append(x=0.5, y=1.5)
+        xarr = self.SimpleArray(array=np.array([1, 2, 3], dtype=self.dtype))
+        yarr = self.SimpleArray(array=np.array([4, 5, 6], dtype=self.dtype))
+        pp.append(x=xarr, y=yarr)
+        self.assertEqual(len(pp), 4)
+        self.assert_allclose(pp.x, [0.5, 1, 2, 3])
+        self.assert_allclose(pp.y, [1.5, 4, 5, 6])
+        self.assertEqual(len(pp.z), 0)
+
+        # A column of a 2D array is a strided view.
+        both = self.SimpleArray(
+            array=np.array([[7, 8], [9, 10]], dtype=self.dtype))
+        pp.append(x=both[:, 0], y=both[:, 1])
+        self.assertEqual(len(pp), 6)
+        self.assert_allclose(pp.x[4:], [7, 9])
+        self.assert_allclose(pp.y[4:], [8, 10])
+
+        # An empty batch appends nothing.
+        empty = self.SimpleArray(array=np.array([], dtype=self.dtype))
+        pp.append(x=empty, y=empty)
+        self.assertEqual(len(pp), 6)
+
+    def test_append_arrays_3d(self):
+        pp = self.PointPad(ndim=3)
+        xarr = self.SimpleArray(array=np.array([1, 2], dtype=self.dtype))
+        yarr = self.SimpleArray(array=np.array([3, 4], dtype=self.dtype))
+        zarr = self.SimpleArray(array=np.array([5, 6], dtype=self.dtype))
+        pp.append(x=xarr, y=yarr, z=zarr)
+        self.assertEqual(len(pp), 2)
+        self.assert_allclose(pp.x, [1, 2])
+        self.assert_allclose(pp.y, [3, 4])
+        self.assert_allclose(pp.z, [5, 6])
+
+    def test_append_arrays_errors(self):
+        xarr = self.SimpleArray(array=np.array([1, 2], dtype=self.dtype))
+        yarr = self.SimpleArray(array=np.array([3, 4], dtype=self.dtype))
+        zarr = self.SimpleArray(array=np.array([5, 6], dtype=self.dtype))
+        short = self.SimpleArray(array=np.array([1], dtype=self.dtype))
+        grid = self.SimpleArray(
+            array=np.array([[1, 2], [3, 4]], dtype=self.dtype))
+        pp2 = self.PointPad(ndim=2)
+        pp3 = self.PointPad(ndim=3)
+        with self.assertRaisesRegex(
+                IndexError, "PointPad::append: ndim must be 3 but is 2"):
+            pp2.append(x=xarr, y=yarr, z=zarr)
+        with self.assertRaisesRegex(
+                IndexError, "PointPad::append: ndim must be 2 but is 3"):
+            pp3.append(x=xarr, y=yarr)
+        with self.assertRaisesRegex(ValueError, "sizes 2 and 1"):
+            pp2.append(x=xarr, y=short)
+        with self.assertRaisesRegex(ValueError, "must be 1D"):
+            pp2.append(x=grid, y=grid)
+        self.assertEqual(len(pp2), 0)
 
 
 class PointPadFp32TC(PointPadTB, unittest.TestCase):

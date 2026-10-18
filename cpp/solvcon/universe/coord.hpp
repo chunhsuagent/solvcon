@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <limits>
+#include <tuple>
 
 namespace solvcon
 {
@@ -539,6 +540,9 @@ public:
         m_z.push_back(z);
     }
 
+    void append(SimpleArray<T> const & x, SimpleArray<T> const & y);
+    void append(SimpleArray<T> const & x, SimpleArray<T> const & y, SimpleArray<T> const & z);
+
     // Do not implement setter of m_ndim. It should not be changed after construction.
     uint8_t ndim() const { return m_ndim; }
 
@@ -728,7 +732,59 @@ public:
         }
     }
 
+    /**
+     * Squared circumradius and circumcenter (x, y, z) of the triangle through
+     * the points ia, ib, and ic. The center lies in the plane of the
+     * triangle. For a 2D pad, z is zero. The computation is relative to the
+     * first point to keep precision for points far from the origin.
+     */
+    std::tuple<value_type, value_type, value_type, value_type> circumcircle(size_t ia, size_t ib, size_t ic) const
+    {
+        size_t const n = m_x.size();
+        if (ia >= n || ib >= n || ic >= n)
+        {
+            throw std::out_of_range(std::format("PointPad::circumcircle: index ({}, {}, {}) out of range of {}", ia, ib, ic, n));
+        }
+        value_type const bx = m_x[ib] - m_x[ia];
+        value_type const by = m_y[ib] - m_y[ia];
+        value_type const cx = m_x[ic] - m_x[ia];
+        value_type const cy = m_y[ic] - m_y[ia];
+        if (m_ndim == 3)
+        {
+            value_type const bz = m_z[ib] - m_z[ia];
+            value_type const cz = m_z[ic] - m_z[ia];
+            // The normal of the triangle plane.
+            value_type const nx = by * cz - bz * cy;
+            value_type const ny = bz * cx - bx * cz;
+            value_type const nz = bx * cy - by * cx;
+            value_type const nn = nx * nx + ny * ny + nz * nz;
+            if (nn == 0)
+            {
+                throw std::invalid_argument("PointPad::circumcircle: the points are collinear or duplicated");
+            }
+            value_type const b2 = bx * bx + by * by + bz * bz;
+            value_type const c2 = cx * cx + cy * cy + cz * cz;
+            // u = (c2 * (n x b) + b2 * (c x n)) / (2 * nn)
+            value_type const ux = (c2 * (ny * bz - nz * by) + b2 * (cy * nz - cz * ny)) / (2 * nn);
+            value_type const uy = (c2 * (nz * bx - nx * bz) + b2 * (cz * nx - cx * nz)) / (2 * nn);
+            value_type const uz = (c2 * (nx * by - ny * bx) + b2 * (cx * ny - cy * nx)) / (2 * nn);
+            return {ux * ux + uy * uy + uz * uz, m_x[ia] + ux, m_y[ia] + uy, m_z[ia] + uz};
+        }
+        value_type const dd = 2 * (bx * cy - by * cx);
+        if (dd == 0)
+        {
+            throw std::invalid_argument("PointPad::circumcircle: the points are collinear or duplicated");
+        }
+        value_type const b2 = bx * bx + by * by;
+        value_type const c2 = cx * cx + cy * cy;
+        value_type const ux = (cy * b2 - by * c2) / dd;
+        value_type const uy = (bx * c2 - cx * b2) / dd;
+        return {ux * ux + uy * uy, m_x[ia] + ux, m_y[ia] + uy, value_type(0)};
+    }
+
 private:
+
+    static size_type validate_batch(SimpleArray<T> const & a, SimpleArray<T> const & b);
 
     uint8_t m_ndim;
     size_type m_alignment;
@@ -738,6 +794,63 @@ private:
     SimpleCollector<value_type> m_z;
 
 }; /* end class PointPad */
+
+/// Check that the two arrays are 1D with the same length, and return the length.
+template <typename T>
+typename PointPad<T>::size_type PointPad<T>::validate_batch(SimpleArray<T> const & a, SimpleArray<T> const & b)
+{
+    if (a.ndim() != 1 || b.ndim() != 1)
+    {
+        throw std::invalid_argument(std::format("PointPad::append: arrays must be 1D but are {}D and {}D", a.ndim(), b.ndim()));
+    }
+    if (a.size() != b.size())
+    {
+        throw std::invalid_argument(std::format("PointPad::append: array sizes {} and {} are not the same", a.size(), b.size()));
+    }
+    return a.size();
+}
+
+/**
+ * Append all the points of the 1D arrays x and y to a 2D pad. The arrays may
+ * be strided views, such as a column of a 2D array.
+ */
+template <typename T>
+void PointPad<T>::append(SimpleArray<T> const & x, SimpleArray<T> const & y)
+{
+    if (m_ndim != 2)
+    {
+        throw std::out_of_range(std::format("PointPad::append: ndim must be 2 but is {}", static_cast<int>(m_ndim)));
+    }
+    size_type const n = validate_batch(x, y);
+    m_x.reserve(m_x.size() + n);
+    m_y.reserve(m_y.size() + n);
+    for (size_type i = 0; i < n; ++i)
+    {
+        m_x.push_back(x(i));
+        m_y.push_back(y(i));
+    }
+}
+
+/// Append all the points of the 1D arrays x, y and z to a 3D pad.
+template <typename T>
+void PointPad<T>::append(SimpleArray<T> const & x, SimpleArray<T> const & y, SimpleArray<T> const & z)
+{
+    if (m_ndim != 3)
+    {
+        throw std::out_of_range(std::format("PointPad::append: ndim must be 3 but is {}", static_cast<int>(m_ndim)));
+    }
+    size_type const n = validate_batch(x, y);
+    validate_batch(x, z);
+    m_x.reserve(m_x.size() + n);
+    m_y.reserve(m_y.size() + n);
+    m_z.reserve(m_z.size() + n);
+    for (size_type i = 0; i < n; ++i)
+    {
+        m_x.push_back(x(i));
+        m_y.push_back(y(i));
+        m_z.push_back(z(i));
+    }
+}
 
 using PointPadFp32 = PointPad<float>;
 using PointPadFp64 = PointPad<double>;
