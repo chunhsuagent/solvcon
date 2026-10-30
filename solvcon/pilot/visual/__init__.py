@@ -2,42 +2,17 @@
 # BSD 3-Clause License, see COPYING
 
 
-"""
-The visual pieces of the pilot: sample meshes, the Gmsh file dialog, the
-mesh style status helpers, the viewer movie recorder, and the line plot
-widget.
-"""
+"""The visual pieces of the pilot: what draws meshes, fields, and plots."""
 
 from .. import _pilot_core as _pcore
 
-if _pcore.enable:
-    from . import _mesh
-    from . import _movie
-    from . import _plot
-
-    SampleMesh = _mesh.SampleMesh
-    SampleMeshFeature = _mesh.SampleMeshFeature
-    MeshStyleStatus = _mesh.MeshStyleStatus
-    GmshFileDialog = _mesh.GmshFileDialog
-    MovieRecorder = _movie.MovieRecorder
-    LinePlotWidget = _plot.LinePlotWidget
-else:
-    # Bind only the public names: a None module attribute would shadow the
-    # real submodule import in no-GUI builds.
-    SampleMesh = None
-    SampleMeshFeature = None
-    MeshStyleStatus = None
-    GmshFileDialog = None
-    MovieRecorder = None
-    LinePlotWidget = None
-
-__all__ = [
-    'GmshFileDialog',
-    'LinePlotWidget',
-    'MeshStyleStatus',
-    'MovieRecorder',
-    'SampleMesh',
-    'SampleMeshFeature',
-]
+__all__, __getattr__, __dir__ = _pcore.lazy_exports(__name__, {
+    '_colorizer': ['ColorBar', 'FieldColorizer', 'colormap'],
+    '_mesh': ['GmshFileDialog', 'MeshDrawer', 'MeshStyleStatus',
+              'SampleMesh', 'SampleMeshDialog', 'SampleMeshFeature'],
+    '_movie': ['MovieRecorder', 'default_movie_suffix'],
+    '_plot': ['LinePlotWidget', 'plot_array'],
+    '_viewer': ['DomainViewer'],
+})
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

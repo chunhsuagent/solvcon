@@ -13,6 +13,7 @@
 #include <solvcon/buffer/pymod/SimpleArrayCaster.hpp>
 
 #include <solvcon/pilot/plot/PlotLimits2d.hpp>
+#include <solvcon/pilot/plot/RPlotDecimator.hpp>
 #include <solvcon/pilot/plot/RPlotModel.hpp>
 #include <solvcon/pilot/plot/RPlotSeries.hpp>
 #include <solvcon/pilot/plot/RPlotTicker.hpp>
@@ -21,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <memory>
 #include <span>
 #include <stdexcept>
@@ -34,6 +36,20 @@ namespace python
 
 namespace
 {
+
+/**
+ * Reject a column count below 1 with ValueError. A std::size_t parameter would
+ * raise TypeError for a negative count instead.
+ */
+std::size_t checked_columns(std::int64_t columns)
+{
+    if (columns < 1)
+    {
+        throw std::invalid_argument(
+            std::format("RPlotDecimator::select: columns must be at least 1, but it is {}", columns));
+    }
+    return static_cast<std::size_t>(columns);
+}
 
 /**
  * Reject a negative index with IndexError. A std::size_t parameter would raise
@@ -145,6 +161,14 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapPlotLimits2d
             .def_readwrite("ymin", &wrapped_type::ymin)
             .def_readwrite("ymax", &wrapped_type::ymax)
             .def("merge", &wrapped_type::merge, py::arg("other"))
+            .def(
+                "zoom_at",
+                &wrapped_type::zoom_at,
+                py::arg("factor_x"),
+                py::arg("factor_y"),
+                py::arg("anchor_x"),
+                py::arg("anchor_y"))
+            .def("shift", &wrapped_type::shift, py::arg("dx"), py::arg("dy"))
             .def(py::self == py::self) // NOLINT(misc-redundant-expression)
             .def(py::self != py::self) // NOLINT(misc-redundant-expression)
             .def(
@@ -212,6 +236,43 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotSeries
 
 }; /* end class WrapRPlotSeries */
 
+class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotDecimator
+    : public WrapBase<WrapRPlotDecimator, RPlotDecimator>
+{
+
+    friend root_base_type;
+
+    WrapRPlotDecimator(pybind11::module & mod, char const * pyname, char const * pydoc)
+        : root_base_type(mod, pyname, pydoc)
+    {
+        namespace py = pybind11;
+
+        (*this)
+            .def(py::init<>())
+            //
+            ;
+
+        (*this)
+            .def(
+                "select",
+                [](wrapped_type const & self,
+                   RPlotSeries const & series,
+                   double xmin,
+                   double xmax,
+                   std::int64_t columns,
+                   double y_floor)
+                { return self.select(series, xmin, xmax, checked_columns(columns), y_floor); },
+                py::arg("series"),
+                py::arg("xmin"),
+                py::arg("xmax"),
+                py::arg("columns"),
+                py::arg("y_floor") = -std::numeric_limits<double>::infinity())
+            //
+            ;
+    }
+
+}; /* end class WrapRPlotDecimator */
+
 class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotModel
     : public WrapBase<WrapRPlotModel, RPlotModel, std::shared_ptr<RPlotModel>>
 {
@@ -249,7 +310,17 @@ class SOLVCON_PYTHON_WRAPPER_VISIBILITY WrapRPlotModel
             .def_property("margin", &wrapped_type::margin, &wrapped_type::set_margin)
             .def("view_limits", &wrapped_type::view_limits)
             .def("set_view_limits", &wrapped_type::set_view_limits, py::arg("limits"))
+            .def_property_readonly("auto_view", &wrapped_type::auto_view)
             .def("autoscale", &wrapped_type::autoscale)
+            .def("reset_view", &wrapped_type::reset_view)
+            .def(
+                "zoom_view",
+                &wrapped_type::zoom_view,
+                py::arg("factor_x"),
+                py::arg("factor_y"),
+                py::arg("anchor_x"),
+                py::arg("anchor_y"))
+            .def("pan_view", &wrapped_type::pan_view, py::arg("dx"), py::arg("dy"))
             .def("view", &wrapped_type::view, py::arg("width"), py::arg("height"))
             //
             ;
@@ -330,7 +401,8 @@ void wrap_plot(pybind11::module & mod)
         mod,
         "PlotLimits2d",
         "The mutable xmin, xmax, ymin, and ymax limits of one xy rectangle. "
-        "merge(other) expands this rectangle to contain the other one.");
+        "merge(other) expands this rectangle to contain the other one, "
+        "zoom_at scales it about an anchor, and shift moves it.");
     mod.attr("PlotLimits2d").attr("__hash__") = py::none();
     WrapRPlotSeries::commit(
         mod,
@@ -338,13 +410,20 @@ void wrap_plot(pybind11::module & mod)
         "One xy data series: a copy of a contiguous SimpleArrayFloat64 pair "
         "plus the style used to stroke it. Samples are read through "
         "size / x / y.");
+    WrapRPlotDecimator::commit(
+        mod,
+        "RPlotDecimator",
+        "Select the samples of a series that pixel columns can show: the "
+        "first, lowest, highest, and last of each column (M4), so a dense "
+        "series draws a polyline bounded by the plot width.");
     WrapRPlotModel::commit(
         mod,
         "RPlotModel",
         "The series list of one xy plot: the color cycle a new series draws "
         "from, the aggregate data limits, and the view limits that "
         "autoscale derives and view(width, height) maps onto the screen as "
-        "a ViewTransform2dFp64.");
+        "a ViewTransform2dFp64. zoom_view and pan_view hold a navigated "
+        "view until reset_view follows the data again.");
     WrapRPlotTicker::commit(
         mod,
         "RPlotTicker",

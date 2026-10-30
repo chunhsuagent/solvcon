@@ -2,20 +2,50 @@
 # BSD 3-Clause License, see COPYING
 
 
+import contextlib
 import unittest
+from unittest import mock
 
 import solvcon
+from solvcon import testing
 try:
     from solvcon import pilot
 except ImportError:
     pilot = None
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class PilotTC(unittest.TestCase):
 
     def test_import(self):
         self.assertTrue(hasattr(solvcon.pilot, "mgr"))
+
+
+class PilotRequireTC(unittest.TestCase):
+
+    def test_enable_implies_built_extension(self):
+        # enable needs a Qt build, so it can only be on where HAS_PILOT is.
+        if pilot.enable:
+            self.assertTrue(solvcon.HAS_PILOT)
+            self.assertIsNone(pilot.import_error)
+        else:
+            self.assertIsInstance(pilot.import_error, ImportError)
+
+    def test_require_passes_when_enabled(self):
+        from solvcon.pilot import _pilot_core
+        with mock.patch.object(_pilot_core, 'enable', True):
+            self.assertIsNone(pilot.require('the canvas'))
+
+    def test_require_raises_with_cause(self):
+        from solvcon.pilot import _pilot_core
+        cause = ImportError('No module named PySide6')
+        with mock.patch.object(_pilot_core, 'enable', False), \
+                mock.patch.object(_pilot_core, 'import_error', cause):
+            with self.assertRaises(ImportError) as cm:
+                pilot.require('the canvas')
+        self.assertEqual('the canvas needs solvcon built with Qt '
+                         '(BUILD_QT=ON) and PySide6', str(cm.exception))
+        self.assertIs(cm.exception.__cause__, cause)
 
 
 class PythonConsoleBackendTC(unittest.TestCase):
@@ -120,12 +150,17 @@ class _FakeViewer:
     def __init__(self):
         self.mesh = None
         self.axis = False
+        self.boundaries = []
 
     def updateMesh(self, mesh):
         self.mesh = mesh
 
     def showAxis(self, shown):
         self.axis = shown
+
+    def showBoundary(self, ibc, shown):
+        if shown:
+            self.boundaries.append(ibc)
 
 
 class _FakeManager:
@@ -175,15 +210,19 @@ class PilotNamespaceTC(unittest.TestCase):
         self.assertIn('show_mesh(m)', banner)
         self.assertIn('load_mesh(name)', banner)
 
+    @testing.requires_pilot
     def test_show_mesh_opens_a_viewer(self):
         from solvcon import apputil
         apputil.install_pilot_namespace(self.mgr, self.env)
-        sentinel = object()
-        viewer = self.env.globals['show_mesh'](sentinel)
-        self.assertIs(viewer.mesh, sentinel)
+        mh = solvcon.mesh.RectDomainMesher(nx=2, ny=1).make_mesh(
+            cell_type='quad')
+        viewer = self.env.globals['show_mesh'](mh)
+        self.assertIs(viewer.mesh, mh)
         self.assertTrue(viewer.axis)
+        # The console draws like the menus, with a ribbon per group.
+        self.assertEqual(viewer.boundaries, list(range(mh.nbcs)))
         self.assertEqual(self.env.globals['viewers'](), [viewer])
-        self.assertEqual(self.env.globals['meshes'](), [sentinel])
+        self.assertEqual(self.env.globals['meshes'](), [mh])
 
     def test_refresher_tracks_the_current_viewer(self):
         from solvcon import apputil
@@ -198,7 +237,7 @@ class PilotNamespaceTC(unittest.TestCase):
         self.env.run_code('pass')
         self.assertIs(self.env.globals['mesh'], sentinel)
 
-    @unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+    @testing.requires_pilot
     def test_sample_meshes_lists_the_known_names(self):
         from solvcon import apputil
         apputil.install_pilot_namespace(self.mgr, self.env)
@@ -206,7 +245,7 @@ class PilotNamespaceTC(unittest.TestCase):
         self.assertIn('tetrahedron', names)
         self.assertIn('3dmix', names)
 
-    @unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+    @testing.requires_pilot
     def test_load_mesh_shows_a_named_sample(self):
         from solvcon import apputil
         apputil.install_pilot_namespace(self.mgr, self.env)
@@ -216,7 +255,7 @@ class PilotNamespaceTC(unittest.TestCase):
         self.assertTrue(viewer.axis)
         self.assertEqual(self.env.globals['viewers'](), [viewer])
 
-    @unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+    @testing.requires_pilot
     def test_load_mesh_rejects_an_unknown_name(self):
         from solvcon import apputil
         apputil.install_pilot_namespace(self.mgr, self.env)
@@ -299,7 +338,6 @@ class CallTipTC(unittest.TestCase):
 
 class PythonCommandTC(unittest.TestCase):
     def test_uses_the_active_interpreter_and_preserves_arguments(self):
-        from unittest import mock
         from solvcon import system
 
         clinfo = mock.Mock(populated=False)
@@ -343,7 +381,7 @@ class WorkerTC(unittest.TestCase):
             future.result(timeout=5)
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class SetupProcessTC(unittest.TestCase):
 
     def test_namespace_includes_pilot(self):
@@ -356,7 +394,6 @@ class SetupProcessTC(unittest.TestCase):
 
     def test_broken_pilot_import_warns(self):
         import sys
-        from unittest import mock
         from solvcon import system
         # Force "from . import pilot" to raise ImportError: drop the cached
         # attribute so the import re-runs, and poison sys.modules so it
@@ -369,5 +406,39 @@ class SetupProcessTC(unittest.TestCase):
                     system.setup_process([])
         finally:
             solvcon.pilot = saved
+
+
+class MissingPilotTC(unittest.TestCase):
+    """
+    What the process entry points say when the pilot cannot run.
+
+    The pilot is patched off, so these run with or without a Qt build.
+    """
+
+    def _pilot_off(self, cause=None):
+        from solvcon.pilot import _pilot_core
+        stack = contextlib.ExitStack()
+        for mod in (_pilot_core, solvcon.pilot):
+            stack.enter_context(mock.patch.multiple(
+                mod, enable=False, import_error=cause))
+        return stack
+
+    def test_disabled_pilot_warns_with_reason(self):
+        from solvcon import system
+        cause = ImportError('No module named PySide6')
+        # setup_process only imports the pilot where the extension has it.
+        with mock.patch.object(solvcon, 'HAS_PILOT', True), \
+                self._pilot_off(cause):
+            with self.assertWarnsRegex(UserWarning, 'No module named'):
+                system.setup_process([])
+
+    def test_run_pilot_names_the_missing_pilot(self):
+        from solvcon import system
+        with self._pilot_off():
+            with self.assertRaisesRegex(
+                    ImportError,
+                    r'^the pilot application needs solvcon built with Qt '
+                    r'\(BUILD_QT=ON\) and PySide6$'):
+                system._run_pilot([])
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4:

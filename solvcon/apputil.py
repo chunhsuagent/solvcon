@@ -15,7 +15,6 @@ Tools to run applications
 
 
 import code
-import concurrent.futures
 import contextlib
 import importlib
 import inspect
@@ -23,6 +22,10 @@ import io
 import re
 import rlcompleter
 import sys
+# It must import at the end, because a from-import follows the plain imports.
+# It imports the class, because Python 3.15 with PySide6 leaves the lazy
+# concurrent.futures.ThreadPoolExecutor attribute unresolved.
+from concurrent.futures import ThreadPoolExecutor
 
 
 __all__ = [
@@ -282,7 +285,7 @@ def run_worker(func, *args, **kwargs):
     """
     global _worker_pool
     if _worker_pool is None:
-        _worker_pool = concurrent.futures.ThreadPoolExecutor(
+        _worker_pool = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix='solvcon-console-worker')
     return _worker_pool.submit(func, *args, **kwargs)
 
@@ -307,10 +310,8 @@ def build_pilot_namespace(mgr):
     """
     def show_mesh(m):
         """Open a mesh in a fresh 3D viewer and return the viewer."""
-        w = mgr.add3DWidget()
-        w.updateMesh(m)
-        w.showAxis(True)
-        return w
+        from .pilot import visual
+        return visual.MeshDrawer(mgr).show(m)
 
     def viewers():
         """List the open 3D viewers."""
@@ -323,13 +324,13 @@ def build_pilot_namespace(mgr):
     def load_mesh(name):
         """Build a built-in sample mesh, show it in a fresh 3D viewer, and
         return the viewer.  Call sample_meshes() for the available names."""
-        from .pilot.visual import _mesh
-        return show_mesh(_mesh.SampleMesh().make(name))
+        from .pilot import visual
+        return show_mesh(visual.SampleMesh().make(name))
 
     def sample_meshes():
         """List the names of the built-in sample meshes."""
-        from .pilot.visual import _mesh
-        return list(_mesh.SampleMesh.names())
+        from .pilot import visual
+        return list(visual.SampleMesh.names())
 
     viewer = mgr.currentR3DWidget()
     handles = {

@@ -12,19 +12,21 @@ takes to fill the readout boxes and read the cells back.
 import os
 import unittest
 
-import solvcon
+from solvcon import testing
 
 try:
     from solvcon import pilot
-    from solvcon.pilot.apps.obsrefl import ReflectionSession
-    from solvcon.pilot.apps.obsrefl import _panel
-    from solvcon.pilot.apps.obsrefl._panel import SolutionPanel
-    from solvcon.pilot.visual import _movie
+    from solvcon.apps.obsrefl import ReflectionSession
+    # The panel needs the pilot, so import it only with the pilot.
+    if pilot.enable:
+        from solvcon.apps.obsrefl import _panel
+        from solvcon.apps.obsrefl._panel import SolutionPanel
+        from solvcon.pilot.visual import _movie
 except ImportError:
     pilot = None
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class StatusReadoutTC(unittest.TestCase):
     """What `set_status` puts in which readout cell."""
 
@@ -114,6 +116,22 @@ class StatusReadoutTC(unittest.TestCase):
                          panel._run._cfl.text())
         panel.set_status(None, None, None)
         self.assertEqual("-", panel._run._cfl.text())
+
+    def test_the_configuration_error_is_shown_and_cleared(self):
+        panel = SolutionPanel()
+        error = panel._freestream._configuration_error
+        self.assertTrue(error.isHidden())
+
+        panel.set_configuration_error(
+            "Adjust Mach, gamma, or the deflection angle.")
+        self.assertFalse(error.isHidden())
+        self.assertEqual(
+            "Adjust Mach, gamma, or the deflection angle.",
+            panel._freestream._error_message.text())
+
+        panel.set_configuration_error("")
+        self.assertTrue(error.isHidden())
+        self.assertEqual("", panel._freestream._error_message.text())
 
     def test_the_cfl_field_colors_without_an_analytic_column(self):
         # The zone table judges a field against the analytic answer, which
@@ -217,7 +235,7 @@ class StatusReadoutTC(unittest.TestCase):
         # into it and names the movie's real destination.
         panel = SolutionPanel()
         self.assertTrue(os.path.isabs(panel._movie._path.text()))
-        landing = f"tmp/obrefl_unstructured{_movie._default_suffix()}"
+        landing = f"tmp/obsrefl_unstructured{_movie.default_movie_suffix()}"
         self.assertEqual(os.path.abspath(landing),
                          panel.movie_path('unstructured'))
         panel._movie._path.setText('movie.gif')

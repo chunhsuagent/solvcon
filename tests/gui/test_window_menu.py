@@ -10,28 +10,21 @@ under the "Window" menu: what it lists, which entry is checked, and what
 activating an entry does.
 """
 
-import os
 import unittest
 
-import solvcon
+from solvcon import testing
 
 try:
     from solvcon import pilot
     from solvcon.pilot.base import _gui
-    from solvcon.pilot.onedim import _euler1d
+    from solvcon import apps  # noqa: F401
     from solvcon.pilot.panel._window_manager import WindowManager
     from PySide6 import QtWidgets
 except ImportError:
     pilot = None
 
-# The offscreen platform cannot back a live window; neither can the headless
-# Windows CI runner, whose WARP software rasterizer faults on one.
-NO_LIVE_WINDOW = ((os.getenv('QT_QPA_PLATFORM') or '').startswith('offscreen')
-                  or ('nt' == os.name and bool(os.getenv('GITHUB_ACTIONS'))))
 
-
-@unittest.skipIf(NO_LIVE_WINDOW or not solvcon.HAS_PILOT,
-                 "pilot windows need a real window surface")
+@testing.requires_live_window
 class WindowMenuTC(unittest.TestCase):
     """Drive the WindowManager list through the live "Window" menu."""
 
@@ -126,15 +119,15 @@ class WindowMenuTC(unittest.TestCase):
     def test_solver_window_carries_its_title(self):
         # A 1D solver window used to carry no title at all, so the list
         # could only show it as a bare numbered "window" entry.
-        app = _euler1d.Euler1DApp(mgr=self.mgr)
-        app.run()
+        app = _gui.controller.apps['shocktube']
+        app.open()
+        self.addCleanup(app.close)
         self._show()
         items = self._items()
-        self.assertTrue(items[-1].text().endswith("Euler solver"))
+        self.assertTrue(items[-1].text().endswith("Shock tube: Sod"))
 
 
-@unittest.skipIf(NO_LIVE_WINDOW or not solvcon.HAS_PILOT,
-                 "pilot windows need a real window surface")
+@testing.requires_live_window
 class WindowLayoutTC(unittest.TestCase):
     """Drive the layout actions in the "Window" menu."""
 
@@ -309,8 +302,7 @@ class WindowLayoutTC(unittest.TestCase):
         self.assertFalse(one.intersects(two))
 
 
-@unittest.skipIf(NO_LIVE_WINDOW or not solvcon.HAS_PILOT,
-                 "pilot windows need a real window surface")
+@testing.requires_live_window
 class TabbedViewTC(unittest.TestCase):
     """Drive the "Tabbed View" toggle in the "Window" menu."""
 

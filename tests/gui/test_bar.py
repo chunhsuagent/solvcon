@@ -2,29 +2,25 @@
 # BSD 3-Clause License, see COPYING
 
 
-import os
 import unittest
 
-import solvcon
+from solvcon import testing
 
 try:
     from PySide6 import QtCore
     from solvcon import pilot
     from solvcon.pilot.base import _gui
+    # Import the apps as the entry point does, so their menu entries are in
+    # the bar whichever test builds the controller first.
+    from solvcon import apps  # noqa: F401
 except ImportError:
     pilot = None
 
-# The offscreen platform cannot back a live window; neither can the headless
-# Windows CI runner, whose WARP software rasterizer faults on one.
-NO_LIVE_WINDOW = ((os.getenv('QT_QPA_PLATFORM') or '').startswith('offscreen')
-                  or ('nt' == os.name and bool(os.getenv('GITHUB_ACTIONS'))))
-
-BUILTINS = ["File", "Edit", "View", "One", "Mesh", "Canvas", "Profiling",
+BUILTINS = ["File", "Edit", "View", "App", "Mesh", "Canvas", "Profiling",
             "Track", "Window"]
 
 
-@unittest.skipIf(NO_LIVE_WINDOW or not solvcon.HAS_PILOT,
-                 "pilot windows need a real window surface")
+@testing.requires_live_window
 class BarStructureTC(unittest.TestCase):
     def test_full_bar_is_assembled_from_the_model(self):
         mgr = _gui.controller.build()
@@ -51,8 +47,8 @@ class BarStructureTC(unittest.TestCase):
         panels = [a.text() for a in model.menu("View/Panels").actions()]
         self.assertEqual(
             list(dict.fromkeys(panels)),
-            ["Inspector", "Euler solver", "Painter", "MCAP", "Console",
-             "Terminal", "Agent Console"])
+            ["Inspector", "Oblique shock reflection", "App config",
+             "Painter", "MCAP", "Console", "Terminal", "Agent Console"])
 
         # The Console and Terminal toggles live with the other panel toggles;
         # the Window menu holds only the dynamic sub-window list.
@@ -69,7 +65,7 @@ class BarStructureTC(unittest.TestCase):
         action.trigger()
         inspector = _gui.controller.benchmark
         try:
-            self.assertIs(inspector.mdiArea(), mgr.mdiArea)
+            self.assertIn(inspector, mgr.mdiArea.subWindowList())
             inspector.close()
             action.trigger()
             self.assertIs(_gui.controller.benchmark, inspector)

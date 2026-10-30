@@ -9,12 +9,14 @@ The core is pure C++ with no Qt widget, so everything here is exercised
 through the pybind11 surface registered into ``solvcon.pilot``.
 """
 
+import math
 import re
 import unittest
 
 import numpy as np
 
 import solvcon
+from solvcon import testing
 
 try:
     from solvcon import pilot
@@ -39,7 +41,7 @@ def _limits(xmin, xmax, ymin, ymax):
     return pilot.PlotLimits2d(xmin, xmax, ymin, ymax)
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class PilotPlotTC(unittest.TestCase):
     """The native plot limits, color cycle, and xy series."""
 
@@ -77,6 +79,17 @@ class PilotPlotTC(unittest.TestCase):
         self.assertEqual(_limits(-2.0, 3.0, 1.0, 5.0), limits)
         self.assertEqual('PlotLimits2d(xmin=-2, xmax=3, ymin=1, ymax=5)',
                          repr(limits))
+
+    def test_limits_zoom_about_an_anchor_and_shift(self):
+        limits = _limits(0.0, 4.0, -2.0, 2.0)
+        # A unit factor leaves its axis bit for bit, so one axis zooms
+        # alone.
+        self.assertIsNone(limits.zoom_at(2.0, 1.0, 1.0, 0.0))
+        self.assertEqual(_limits(0.5, 2.5, -2.0, 2.0), limits)
+        limits.zoom_at(1.0, 0.5, 0.0, 2.0)
+        self.assertEqual(_limits(0.5, 2.5, -6.0, 2.0), limits)
+        self.assertIsNone(limits.shift(-0.5, 1.0))
+        self.assertEqual(_limits(0.0, 2.0, -5.0, 3.0), limits)
 
     def test_returned_limits_do_not_mutate_the_plot(self):
         ser = _series([0.0, 1.0], [2.0, 3.0])
@@ -223,7 +236,7 @@ class PilotPlotTC(unittest.TestCase):
         self.assertEqual(1.5, ser.line_width)
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class PilotPlotTickerTC(unittest.TestCase):
     """The native locator used to position axis ticks and labels."""
 
@@ -335,7 +348,7 @@ class PilotPlotTickerTC(unittest.TestCase):
             pilot.RPlotTicker(0)
 
 
-@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+@testing.requires_pilot
 class PilotPlotModelTC(unittest.TestCase):
     """The series list of one plot and the view derived from it."""
 
@@ -423,6 +436,75 @@ class PilotPlotModelTC(unittest.TestCase):
         model.set_view_limits(_limits(-2.0, 2.0, -4.0, 4.0))
         self.assertEqual(_limits(-2.0, 2.0, -4.0, 4.0), model.view_limits())
 
+    def _navigable(self):
+        """A model viewing its data at (0, 8, 0, 4), with no margin."""
+        model = pilot.RPlotModel()
+        model.margin = 0.0
+        model.add_series().set_data(_array([0.0, 8.0]), _array([0.0, 4.0]))
+        model.autoscale()
+        return model
+
+    def test_the_view_follows_the_data_until_it_is_navigated(self):
+        model = self._navigable()
+        self.assertTrue(model.auto_view)
+        model.zoom_view(2.0, 2.0, 0.0, 0.0)
+        self.assertFalse(model.auto_view)
+        model.reset_view()
+        self.assertTrue(model.auto_view)
+        model.pan_view(1.0, 0.0)
+        self.assertFalse(model.auto_view)
+        model.reset_view()
+        model.set_view_limits(_limits(0.0, 1.0, 0.0, 1.0))
+        self.assertFalse(model.auto_view)
+
+    def test_zoom_view_keeps_the_anchor_and_takes_one_axis(self):
+        model = self._navigable()
+        model.zoom_view(2.0, 2.0, 2.0, 1.0)
+        self.assertEqual(_limits(1.0, 5.0, 0.5, 2.5), model.view_limits())
+        # Zoom the abscissa out alone; the ordinate anchor is never read.
+        model.zoom_view(0.5, 1.0, 3.0, 99.0)
+        self.assertEqual(_limits(-1.0, 7.0, 0.5, 2.5), model.view_limits())
+
+    def test_pan_view_moves_by_data_units(self):
+        model = self._navigable()
+        model.pan_view(1.5, -0.5)
+        self.assertEqual(_limits(1.5, 9.5, -0.5, 3.5), model.view_limits())
+
+    def test_reset_view_rescales_to_the_current_data(self):
+        model = self._navigable()
+        model.zoom_view(4.0, 4.0, 1.0, 1.0)
+        model.series(0).set_data(_array([-2.0, 2.0]), _array([0.0, 1.0]))
+        model.reset_view()
+        self.assertEqual(_limits(-2.0, 2.0, 0.0, 1.0), model.view_limits())
+
+    def test_navigation_stops_where_an_axis_would_break(self):
+        model = self._navigable()
+        # Zooming in forever stops while the two limits are still apart,
+        # and the other axis never moves.
+        for _ in range(200):
+            model.zoom_view(2.0, 1.0, 4.0, 2.0)
+        limits = model.view_limits()
+        self.assertLess(limits.xmin, limits.xmax)
+        self.assertLess(limits.xmax - limits.xmin, 1e-9)
+        self.assertEqual((0.0, 4.0), (limits.ymin, limits.ymax))
+        # Zooming or panning out stops before a limit overflows.
+        for _ in range(3):
+            model.zoom_view(1.0, 1e-300, 0.0, 0.0)
+            model.pan_view(0.0, 1e308)
+        self.assertTrue(all(math.isfinite(v) for v in model.view_limits()))
+
+    def test_navigation_rejects_what_it_cannot_apply(self):
+        model = self._navigable()
+        for bad in ((0.0, 1.0, 0.0, 0.0), (1.0, -2.0, 0.0, 0.0),
+                    (float('nan'), 1.0, 0.0, 0.0),
+                    (2.0, 2.0, float('inf'), 0.0)):
+            with self.assertRaises(ValueError):
+                model.zoom_view(*bad)
+        with self.assertRaises(ValueError):
+            model.pan_view(float('nan'), 0.0)
+        self.assertEqual(_limits(0.0, 8.0, 0.0, 4.0), model.view_limits())
+        self.assertTrue(model.auto_view)
+
     def test_view_fits_and_centers_the_limits(self):
         model = pilot.RPlotModel()
         model.set_view_limits(_limits(0.0, 10.0, 0.0, 10.0))
@@ -434,6 +516,116 @@ class PilotPlotModelTC(unittest.TestCase):
                               (float('nan'), 100.0)):
             with self.assertRaises(ValueError):
                 model.view(width, height)
+
+
+@unittest.skipUnless(solvcon.HAS_PILOT, "Qt pilot is not built")
+class PilotPlotDecimatorTC(unittest.TestCase):
+    """Which samples of a series the pixel columns keep."""
+
+    COLUMNS = 50
+    PER_COLUMN = 40
+
+    def _abscissae(self):
+        """Return the column of each sample and its x over [0, 1].
+
+        The samples sit inside their columns, clear of the edges, where
+        rounding rather than the selection would decide the column.
+        """
+        column = np.repeat(np.arange(self.COLUMNS, dtype='int64'),
+                           self.PER_COLUMN)
+        offset = np.tile(np.linspace(0.05, 0.95, self.PER_COLUMN,
+                                     dtype='float64'), self.COLUMNS)
+        return column, (column + offset) / self.COLUMNS
+
+    def _select(self, xs, ys, xmin=0.0, xmax=1.0, **kw):
+        kept = pilot.RPlotDecimator().select(_series(xs, ys), xmin, xmax,
+                                             self.COLUMNS, **kw)
+        return kept.ndarray.tolist()
+
+    @staticmethod
+    def _m4(column, ys, drawable):
+        """Return the indices of the first, lowest, highest, and last
+        drawable sample of every column, in increasing order.
+        """
+        picked = set()
+        for it in np.unique(column[drawable]):
+            idx = np.nonzero(drawable & (column == it))[0]
+            picked.update((idx[0], idx[-1], idx[np.argmin(ys[idx])],
+                           idx[np.argmax(ys[idx])]))
+        return sorted(int(it) for it in picked)
+
+    def test_a_series_no_denser_than_four_per_column_is_kept_whole(self):
+        # Four per column is what the cut keeps anyway, so a sparser series
+        # loses nothing to it and is drawn point for point, as before.
+        xs = np.linspace(0.0, 1.0, 4 * self.COLUMNS, dtype='float64')
+        ys = np.random.default_rng(1).uniform(1.0, 2.0, len(xs))
+        self.assertEqual(list(range(len(xs))), self._select(xs, ys))
+        ys[[1, 2]] = [np.nan, -1.0]
+        self.assertEqual([0] + list(range(3, len(xs))),
+                         self._select(xs, ys, y_floor=0.0))
+
+    def test_each_column_keeps_its_first_lowest_highest_and_last(self):
+        # The lowest and highest keep the extent of a column, and the first
+        # and last join it to its neighbours where the whole series does.
+        column, xs = self._abscissae()
+        ys = np.random.default_rng(2).standard_normal(len(xs))
+        kept = self._select(xs, ys)
+        self.assertEqual(self._m4(column, ys, np.isfinite(ys)), kept)
+        self.assertLessEqual(len(kept), 4 * self.COLUMNS)
+
+    def test_a_one_sample_spike_survives(self):
+        # A lone spike is what a dense plot is often read for, and a stride
+        # or an average loses it.
+        _, xs = self._abscissae()
+        ys = np.zeros(len(xs), dtype='float64')
+        ys[777] = 5.0
+        kept = self._select(xs, ys)
+        self.assertIn(777, kept)
+        self.assertLessEqual(len(kept), 4 * self.COLUMNS)
+
+    def test_a_sample_without_a_place_never_stands_for_a_column(self):
+        # A non-finite sample, or one at or below the floor of a log axis,
+        # is not drawn, so it cannot be the extreme of its column either.
+        column, xs = self._abscissae()
+        ys = np.random.default_rng(3).uniform(1.0, 2.0, len(xs))
+        ys[::7] = np.nan
+        ys[3::11] = 0.0
+        drawable = np.isfinite(ys) & (ys > 1e-16)
+        self.assertEqual(self._m4(column, ys, drawable),
+                         self._select(xs, ys, y_floor=1e-16))
+
+    def test_off_the_view_only_the_samples_crossing_its_edges_are_kept(self):
+        # Beyond the view nothing shows but the segments crossing its edges,
+        # which need only the nearest sample outside each edge, in its
+        # place along the line.
+        xs = np.linspace(-1.0, 2.0, 30000, dtype='float64')
+        kept = np.array(self._select(xs, np.sin(40.0 * xs)), dtype='int64')
+        self.assertTrue(np.all(np.diff(kept) > 0))
+        outside = kept[(xs[kept] < 0.0) | (xs[kept] > 1.0)]
+        self.assertEqual([np.searchsorted(xs, 0.0) - 1,
+                          np.searchsorted(xs, 1.0, side='right')],
+                         outside.tolist())
+
+    def test_a_curve_that_doubles_back_is_kept_whole(self):
+        # Columns follow x, which a curve turning back on itself does not,
+        # so it is drawn point for point.
+        angle = np.linspace(0.0, 2.0 * np.pi, 1000, dtype='float64')
+        kept = self._select(0.5 + 0.4 * np.cos(angle),
+                            0.5 + 0.4 * np.sin(angle))
+        self.assertEqual(list(range(1000)), kept)
+
+    def test_a_range_that_places_no_column_keeps_the_series_whole(self):
+        xs = np.linspace(0.0, 1.0, 1000, dtype='float64')
+        ys = np.sin(xs)
+        for xmin, xmax in ((0.5, 0.5), (1.0, 0.0), (0.0, np.nan),
+                           (-np.inf, 1.0)):
+            self.assertEqual(1000, len(self._select(xs, ys, xmin, xmax)))
+
+    def test_the_column_count_is_validated(self):
+        series = _series([0.0, 1.0], [0.0, 1.0])
+        for columns in (0, -1):
+            with self.assertRaises(ValueError):
+                pilot.RPlotDecimator().select(series, 0.0, 1.0, columns)
 
 
 # vim: set ff=unix fenc=utf8 et sw=4 ts=4 sts=4 tw=79:

@@ -11,37 +11,32 @@ Graphical-user interface code
 
 from ... import apputil
 from .. import _pilot_core as _pcore
-from .. import airfoil
 
 if _pcore.enable:
     from . import _gui_common
-    from ..benchmark import _inspector
-    from ..visual import _mesh
-    from ..panel import _tree_panel
-    from ..apps import obsrefl
-    from ..onedim import _euler1d
-    from ..onedim import _burgers1d
-    from ..canvas import _svg_gui
-    from ..onedim import _linear_wave
-    from ..canvas import _canvas_gui
-    # Through the package rather than its module: a "from ..painter import
-    # _gui" would shadow this module's own name at every use site.
+    from .. import benchmark
+    from .. import visual
+    from .. import panel
+    from .. import canvas
     from .. import painter as _painter
-    from ..panel import _profiling
-    from ..track import _mcap_viewer
-    from ..agent import _agent_gui
+    from .. import track
+    from .. import agent
     from . import _theme
     from . import _ui_state
-    from ..panel import _window_manager
 
 __all__ = [  # noqa: F822
     'controller',
     'launch',
+    'register_app',
 ]
 
 
 def launch():
     return controller.launch()
+
+
+def register_app(name, factory):
+    return controller.register_app(name, factory)
 
 
 def close_active_window(mgr):
@@ -80,14 +75,10 @@ class _Controller(metaclass=_Singleton):
         self.gmsh_dialog = None
         self.svg_dialog = None
         self.tree_panel = None
-        self.obsrefl_app = None
+        self.apps = {}
+        self._app_factories = {}
         self.sample_mesh = None
         self.mesh_style_status = None
-        self.obsrefl_mesh = None
-        self.naca4airfoil = None
-        self.eulerone = None
-        self.burgers = None
-        self.linear_wave = None
         self.painter = None
         self.canvas = None
         self.save_2d_canvas = None
@@ -102,6 +93,34 @@ class _Controller(metaclass=_Singleton):
 
     def __getattr__(self, name):
         return None if self._rmgr is None else getattr(self._rmgr, name)
+
+    @property
+    def mgr(self):
+        """The manager the features are built on, or None before build()."""
+        return self._rmgr
+
+    def register_app(self, name, factory):
+        """Add an app to the pilot under ``name``.
+
+        ``factory(controller)`` returns a feature with ``populate_menu()``.
+        It runs in build(), or right away when the pilot is already built,
+        and the feature lands in ``apps[name]``.  A name taken twice raises
+        :class:`ValueError` rather than placing a second set of menu entries.
+        """
+        if name in self._app_factories:
+            raise ValueError("app {!r} is already registered".format(name))
+        self._app_factories[name] = factory
+        if self._built:
+            self._start_app(name)
+
+    def _start_apps(self):
+        for name in list(self._app_factories):
+            self._start_app(name)
+
+    def _start_app(self, name):
+        app = self._app_factories[name](self)
+        app.populate_menu()
+        self.apps[name] = app
 
     def launch(self, name="pilot", size=(1000, 600)):
         self.build(name=name, size=size)
@@ -126,32 +145,26 @@ class _Controller(metaclass=_Singleton):
         # their toggles under the "View/Panels" path.
         self._rmgr.menu_model.menu("View/Panels", weight=0)
 
-        self.gmsh_dialog = _mesh.GmshFileDialog(mgr=self._rmgr)
-        self.svg_dialog = _svg_gui.SVGFileDialog(mgr=self._rmgr)
-        self.sample_mesh = _mesh.SampleMeshFeature(mgr=self._rmgr)
-        self.mesh_style_status = _mesh.MeshStyleStatus(mgr=self._rmgr)
-        self.tree_panel = _tree_panel.TreePanel(
+        self.gmsh_dialog = visual.GmshFileDialog(mgr=self._rmgr)
+        self.svg_dialog = canvas.SVGFileDialog(mgr=self._rmgr)
+        self.sample_mesh = visual.SampleMeshFeature(mgr=self._rmgr)
+        self.mesh_style_status = visual.MeshStyleStatus(mgr=self._rmgr)
+        self.tree_panel = panel.TreePanel(
             mgr=self._rmgr, style_status=self.mesh_style_status)
-        self.obsrefl_app = obsrefl.ObliqueShockApp(mgr=self._rmgr)
-        self.obsrefl_app.viewer_updated = self.tree_panel.resync
-        self.obsrefl_mesh = obsrefl.ObliqueShockMesh(mgr=self._rmgr)
-        self.naca4airfoil = airfoil.Naca4Airfoil(mgr=self._rmgr)
-        self.mesh_sample_dialog = _mesh.SampleMeshDialog(
+        self.mesh_sample_dialog = visual.SampleMeshDialog(
             mgr=self._rmgr, entries=self._mesh_sample_dialog_entries())
-        self.eulerone = _euler1d.Euler1DApp(mgr=self._rmgr)
-        self.burgers = _burgers1d.Burgers1DApp(mgr=self._rmgr)
-        self.linear_wave = _linear_wave.LinearWave1DApp(mgr=self._rmgr)
         self.painter = _painter.Painter(mgr=self._rmgr)
-        self.canvas = _canvas_gui.Canvas(mgr=self._rmgr, painter=self.painter)
-        self.save_2d_canvas = _canvas_gui.Save2DCanvasDialog(mgr=self._rmgr)
-        self.openprofiledata = _profiling.Profiling(mgr=self._rmgr)
-        self.runprofiling = _profiling.RunProfiling(mgr=self._rmgr)
-        self.mcap_panel = _mcap_viewer.McapPanel(mgr=self._rmgr)
-        self.agent = _agent_gui.AgentPanel(mgr=self._rmgr)
+        self.canvas = canvas.Canvas(mgr=self._rmgr, painter=self.painter)
+        self.save_2d_canvas = canvas.Save2DCanvasDialog(mgr=self._rmgr)
+        self.openprofiledata = panel.Profiling(mgr=self._rmgr)
+        self.runprofiling = panel.RunProfiling(mgr=self._rmgr)
+        self.mcap_panel = track.McapPanel(mgr=self._rmgr)
+        self.agent = agent.AgentPanel(mgr=self._rmgr)
         self.theme_menu = _theme.ThemeMenu(mgr=self._rmgr)
-        self.window_manager = _window_manager.WindowManager(mgr=self._rmgr)
+        self.window_manager = panel.WindowManager(mgr=self._rmgr)
         self.ui_state = _ui_state.UiState(mgr=self._rmgr)
         self.populate_menu()
+        self._start_apps()
         self._seed_console_namespace()
         self._built = True
         return self._rmgr
@@ -169,7 +182,7 @@ class _Controller(metaclass=_Singleton):
 
     def _open_benchmark(self):
         if self.benchmark is None:
-            self.benchmark = _inspector.BenchmarkInspector()
+            self.benchmark = benchmark.BenchmarkInspector()
             self._rmgr.mdiArea.addSubWindow(self.benchmark)
         self.benchmark.widget().show()
         self.benchmark.show()
@@ -182,9 +195,7 @@ class _Controller(metaclass=_Singleton):
         order, gathered from the sample features for the sample dialog.  The
         features stay live so the dialog can invoke their bound methods.
         """
-        return (self.sample_mesh.mesh_sample_dialog_entries()
-                + self.obsrefl_mesh.mesh_sample_dialog_entries()
-                + self.naca4airfoil.mesh_sample_dialog_entries())
+        return self.sample_mesh.mesh_sample_dialog_entries()
 
     def populate_menu(self):
         wm = self._rmgr
@@ -193,13 +204,9 @@ class _Controller(metaclass=_Singleton):
         self.svg_dialog.populate_menu()
         self.save_2d_canvas.populate_menu()
         self.tree_panel.populate_menu()
-        self.obsrefl_app.populate_menu()
         self.painter.populate_menu()
         self.mesh_sample_dialog.populate_menu()
         self.mesh_style_status.populate_menu()
-        self.eulerone.populate_menu()
-        self.burgers.populate_menu()
-        self.linear_wave.populate_menu()
         self.canvas.populate_menu()
         self.openprofiledata.populate_menu()
         self.runprofiling.populate_menu()

@@ -240,18 +240,22 @@ run_pilot_pytest: pilot
 	env $(RUNENV) PYTEST_OPTS="$(PYTEST_OPTS)" \
 		cmake --build $(BUILD_PATH) --target $@ VERBOSE=$(VERBOSE)
 
+.PHONY: bundle-prepare
+bundle-prepare:
+	$(SOLVCON_ROOT)/contrib/bundle/prepare-with-aqt.sh
+
 .PHONY: bundle-precheck
 bundle-precheck:
-	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-homebrew.sh check
+	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-aqt.sh check
 
 .PHONY: bundle
 bundle:
-	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-homebrew.sh all \
+	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-aqt.sh all \
 		--output "$(RELEASE_OUTPUT)" $(RELEASE_ARGS)
 
 .PHONY: bundle-test
 bundle-test:
-	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-homebrew.sh verify \
+	$(SOLVCON_ROOT)/contrib/bundle/bundle-with-aqt.sh verify \
 		"$(RELEASE_ARTIFACT)"
 
 .PHONY: standalone_buffer_setup
@@ -344,6 +348,13 @@ checktws:
 checktests:
 	$(WHICH_PYTHON) contrib/lint/check_test_layout.py
 
+# An application owns everything specific to solving one problem set, and
+# nothing outside solvcon/apps/<name> may import it. See
+# doc/source/application/index.md for the definition.
+.PHONY: checkapps
+checkapps:
+	$(WHICH_PYTHON) contrib/lint/check_app_imports.py
+
 # Run the lint targets concurrently, scaled to the processor count, and keep
 # going on failure so every check reports before make exits non-zero.
 .PHONY: lint
@@ -351,7 +362,7 @@ lint:
 	@$(MAKE) --no-print-directory -j $(NPROC) -k lint_targets
 
 .PHONY: lint_targets
-lint_targets: cformat cinclude flake8 checkascii checktws checktests
+lint_targets: cformat cinclude flake8 checkascii checktws checktests checkapps
 
 .PHONY: pyformat
 pyformat:

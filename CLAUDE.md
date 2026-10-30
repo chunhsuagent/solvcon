@@ -145,7 +145,7 @@ when asked to set an IDE up.
 - `make pyprof` -- run profiling benchmarks; results land in
   `profiling/results/`.
 
-**Lint** (`make lint` runs all six)
+**Lint** (`make lint` runs all seven)
 
 - `make cformat` -- check C++ formatting (read-only; use
   `make FORCE_CLANG_FORMAT=inplace cformat` to fix).
@@ -154,6 +154,9 @@ when asked to set an IDE up.
 - `make checkascii` -- reject non-ASCII bytes in source.
 - `make checktws` -- reject trailing whitespace.
 - `make checktests` -- reject a test filed in the wrong lane (see below).
+- `make checkapps` -- reject code outside an application that imports it.
+  An application owns everything specific to solving one problem set. See
+  `doc/source/application/index.md` for the definition.
 
 **Format**
 
